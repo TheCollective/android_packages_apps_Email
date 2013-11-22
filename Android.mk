@@ -14,38 +14,44 @@
 
 LOCAL_PATH := $(call my-dir)
 
-# Build the Email application itself, along with its tests and the tests for the emailcommon
+# Build the Email application itself, along with its tests and tests for the emailcommon
 # static library.  All tests can be run via runtest email
 
 include $(CLEAR_VARS)
-# Include res dir from chips
+
+# Include res dir from chips, unified, emailcommon, and photoviewer
 chips_dir := ../../../frameworks/ex/chips/res
-mail_common_dir := ../../../frameworks/opt/mailcommon/res
-res_dir := $(chips_dir) $(mail_common_dir) res
+unified_email_dir := ../UnifiedEmail
+photo_dir := ../../../frameworks/opt/photoviewer/res ../../../frameworks/opt/photoviewer/activity/res
+emailcommon_dir := emailcommon
+gridlayout_dir := ../../../frameworks/support/v7/gridlayout/res
+res_dir := res $(unified_email_dir)/res $(chips_dir) $(photo_dir) $(emailcommon_dir)/res $(gridlayout_dir)
 
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_SRC_FILES := $(call all-java-files-under, src/com/android/email)
+LOCAL_SRC_FILES := $(call all-java-files-under, $(unified_email_dir)/src)
+LOCAL_SRC_FILES += $(call all-java-files-under, src/com/android)
 LOCAL_SRC_FILES += $(call all-java-files-under, src/com/beetstra)
+
 LOCAL_RESOURCE_DIR := $(addprefix $(LOCAL_PATH)/, $(res_dir))
+
+# Use assets dir from UnifiedEmail
+# (the default package target doesn't seem to deal with multiple asset dirs)
+LOCAL_ASSET_DIR := $(LOCAL_PATH)/$(unified_email_dir)/assets
+
 LOCAL_AAPT_FLAGS := --auto-add-overlay
-LOCAL_AAPT_FLAGS += --extra-packages com.android.ex.chips
+LOCAL_AAPT_FLAGS += --extra-packages com.android.ex.chips:com.android.mail:com.android.email:com.android.emailcommon:com.android.ex.photo:android.support.v7.gridlayout
 
-LOCAL_STATIC_JAVA_LIBRARIES := android-common com.android.emailcommon guava android-common-chips
+LOCAL_STATIC_JAVA_LIBRARIES := android-common com.android.emailcommon com.android.emailsync guava android-common-chips libphotoviewer
+LOCAL_STATIC_JAVA_LIBRARIES += android-support-v4
+LOCAL_STATIC_JAVA_LIBRARIES += android-support-v7-gridlayout
+LOCAL_STATIC_JAVA_LIBRARIES += android-support-v13
 
-LOCAL_PACKAGE_NAME := Email2
+LOCAL_PACKAGE_NAME := Email
 
-LOCAL_PROGUARD_FLAG_FILES := proguard.flags
+LOCAL_PROGUARD_FLAG_FILES := proguard.flags $(unified_email_dir)/proguard.flags
 
-LOCAL_SDK_VERSION := current
-
-# The Emma tool analyzes code coverage when running unit tests on the
-# application. This configuration line selects which packages will be analyzed,
-# leaving out code which is tested by other means (e.g. static libraries) that
-# would dilute the coverage results. These options do not affect regular
-# production builds.
-LOCAL_EMMA_COVERAGE_FILTER := +com.android.emailcommon.*,+com.android.email.*, \
-    +org.apache.james.mime4j.*,+com.beetstra.jutf7.*,+org.apache.commons.io.*
+LOCAL_SDK_VERSION := 18
 
 include $(BUILD_PACKAGE)
 

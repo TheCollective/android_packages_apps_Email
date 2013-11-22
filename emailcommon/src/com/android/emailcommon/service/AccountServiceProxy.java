@@ -17,21 +17,19 @@
 package com.android.emailcommon.service;
 
 import android.content.Context;
-import android.content.Intent;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
 
 public class AccountServiceProxy extends ServiceProxy implements IAccountService {
 
-    public static final String ACCOUNT_INTENT = "com.android.email.ACCOUNT_INTENT";
     public static final int DEFAULT_ACCOUNT_COLOR = 0xFF0000FF;
 
     private IAccountService mService = null;
     private Object mReturn;
 
     public AccountServiceProxy(Context _context) {
-        super(_context, new Intent(ACCOUNT_INTENT));
+        super(_context, getIntentForEmailPackage(_context, "ACCOUNT_INTENT"));
     }
 
     @Override
@@ -45,11 +43,11 @@ public class AccountServiceProxy extends ServiceProxy implements IAccountService
     }
 
     @Override
-    public void notifyLoginFailed(final long accountId) {
+    public void notifyLoginFailed(final long accountId, final String reason) {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                mService.notifyLoginFailed(accountId);
+                mService.notifyLoginFailed(accountId, reason);
             }
         }, "notifyLoginFailed");
     }

@@ -146,6 +146,11 @@
 
     <!-- USA -->
 
+    <provider id="eon" label="EON" domain="nextobject.com">
+        <incoming uri="imap2://imap.everyone.net" username="$email" />
+        <outgoing uri="smtp://smtp.everyone.net" username="$email" />
+    </provider>
+
     <!-- AOL and variants -->
     <!-- Note, AOL appears to support SSL on both sides, as well -->
     <provider id="aim" label="AIM" domain="aim.com">
@@ -207,6 +212,10 @@
         <incoming uri="eas+ssl+://m.hotmail.com"  username="$email" />
         <outgoing uri="eas+ssl+://m.hotmail.com" username="$email" />
     </provider>
+        <provider id="outlook" label="Outlook" domain="outlook.com">
+        <incoming uri="eas+ssl+://m.hotmail.com"  username="$email" />
+        <outgoing uri="eas+ssl+://m.hotmail.com" username="$email" />
+    </provider>
     <!-- EXCHANGE-REMOVE-SECTION-END -->
     <provider id="live" label="Windows Live Hotmail Plus" domain="live.com"
             note="@string/provider_note_live">
@@ -258,16 +267,16 @@
         <outgoing uri="smtp+ssl+://android.smtp.mail.yahoo.com" username="$email" />
     </provider>
     <provider id="btinternet" label="BT Internet" domain="btinternet.com">
-        <incoming uri="imap+ssl+://android.imap.mail.yahoo.com" username="$email" />
-        <outgoing uri="smtp+ssl+://android.smtp.mail.yahoo.com" username="$email" />
+        <incoming uri="imap+ssl+://mail.btinternet.com" username="$email" />
+        <outgoing uri="smtp+ssl+://mail.btinternet.com" username="$email" />
     </provider>
     <provider id="btopenworld" label="BT Open World" domain="btopenworld.com">
-        <incoming uri="imap+ssl+://android.imap.mail.yahoo.com" username="$email" />
-        <outgoing uri="smtp+ssl+://android.smtp.mail.yahoo.com" username="$email" />
+        <incoming uri="imap+ssl+://mail.btinternet.com" username="$email" />
+        <outgoing uri="smtp+ssl+://mail.btinternet.com" username="$email" />
     </provider>
     <provider id="talk21" label="BT Talk 21" domain="talk21.com">
-        <incoming uri="imap+ssl+://android.imap.mail.yahoo.com" username="$email" />
-        <outgoing uri="smtp+ssl+://android.smtp.mail.yahoo.com" username="$email" />
+        <incoming uri="imap+ssl+://mail.btinternet.com" username="$email" />
+        <outgoing uri="smtp+ssl+://mail.btinternet.com" username="$email" />
     </provider>
     <provider id="rogers" label="Rogers" domain="rogers.com">
         <incoming uri="imap+ssl+://android.imap.mail.yahoo.com" username="$email" />
@@ -326,6 +335,12 @@
         <outgoing uri="smtp+ssl+://smtp.uk.aol.com" username="$user" />
     </provider>
 
+    <!-- France -->
+    <provider id="laposte" label="Laposte" domain="laposte.net">
+        <incoming uri="imap+ssl://imap.laposte.net" username="$email" />
+        <outgoing uri="smtp+ssl://smtp.laposte.net" username="$email" />
+    </provider>
+
     <!-- Germany -->
     <provider id="freenet" label="Freenet" domain="freenet.de">
         <incoming uri="pop3://mx.freenet.de" username="$user" />
@@ -345,43 +360,14 @@
         <outgoing uri="smtp://smtp.web.de" username="$user" />
     </provider>
 
-    <!-- Netherlands -->
-    <!-- TODO:  For all of these, please confirm POP3, and switch to IMAP if supported -->
-    <!-- TODO:  username="" in incoming element is broken - will not work -->
-    <!-- Disabled until username="" is resolved
-    <provider id="hetnet" label="Het Net" domain="hetnet.nl">
-        <incoming uri="pop3://pop.hetnet.nl" username="" />
-        <outgoing uri="smtp://mailhost.hetnet.nl" username="" />
-    </provider>
-    -->
-    <!-- Disabled until test accounts provided
-    <provider id="planet inet" label="Planet Internet" domain="planet.nl">
-        <incoming uri="pop3://pop.planet.nl" username="$user" />
-        <outgoing uri="smtp://mail.planet.nl" username="" />
-    </provider>
-    -->
-    <!-- TODO:  username="" in incoming element is broken - will not work -->
-    <!-- Disabled until username="" is resolved
-    <provider id="tiscali" label="Tiscali" domain="tiscali.nl">
-        <incoming uri="pop3://pop3.tiscali.nl" username="" />
-        <outgoing uri="smtp://smtp.tiscali.nl" username="" />
-    </provider>
-    -->
-    <!-- Disabled until test accounts provided
-    <provider id="wanadoo" label="Wanadoo" domain="wanadoo.nl">
-        <incoming uri="pop3://pop.wanadoo.nl" username="$user" />
-        <outgoing uri="smtp://smtp.wanadoo.nl" username="$user" />
-    </provider>
-     -->
-
     <!-- Poland -->
     <provider id="onet" label="Onet.pl" domain="poczta.onet.pl">
         <incoming uri="pop3://pop3.poczta.onet.pl" username="$email" />
         <outgoing uri="smtp://smtp.poczta.onet.pl" username="$email" />
     </provider>
     <provider id="wirtualna" label="Wirtualna Polska" domain="wp.pl">
-        <incoming uri="pop3://pop3.wp.pl" username="$user" />
-        <outgoing uri="smtp://smtp.wp.pl" username="$user" />
+        <incoming uri="imap+ssl+://imap.wp.pl" username="$user" />
+        <outgoing uri="smtp+ssl+://smtp.wp.pl" username="$user" />
     </provider>
     <provider id="interia" label="Interia" domain="interia.pl">
         <incoming uri="pop3+ssl://poczta.interia.pl" username="$user" />
@@ -390,6 +376,12 @@
     <provider id="o2" label="O2" domain="o2.pl">
         <incoming uri="pop3+ssl://poczta.o2.pl" username="$user" />
         <outgoing uri="smtp+ssl://poczta.o2.pl" username="$user" />
+    </provider>
+
+    <!-- Russia -->
+    <provider id="mail.ru" label="Mail.ru" domain="mail.ru">
+        <incoming uri="imap+tls+://imap.mail.ru" username="$email" />
+        <outgoing uri="smtp+ssl+://smtp.mail.ru" username="$email" />
     </provider>
 
     <!-- Korea -->
@@ -415,15 +407,15 @@
         <incoming uri="imap+ssl+://android.imap.mail.yahoo.com" username="$email" />
         <outgoing uri="smtp+ssl+://android.smtp.mail.yahoo.com" username="$email" />
     </provider>
-    <!-- Note: Yahoo! Japan's ne.jp domain requires $user rather than the usual $email -->
+    <!-- Note: Yahoo! Japan's ne.jp and co.jp domains do not yet support open IMAP -->
     <provider id="yahoo-jp-ybb" label="Yahoo! Japan" domain="ybb.ne.jp">
-        <incoming uri="imap+ssl+://imap.mail.yahoo.co.jp" username="$user" />
-        <outgoing uri="smtp+ssl+://smtp.mail.yahoo.co.jp" username="$user" />
+        <incoming uri="pop3+ssl+://android.ybbpop.mail.yahoo.co.jp" username="$email" />
+        <outgoing uri="smtp+ssl+://android.ybbsmtp.mail.yahoo.co.jp" username="$email" />
     </provider>
     <!-- Note: Yahoo! Japan's co.jp domain requires $user rather than the usual $email -->
     <provider id="yahoo-jp" label="Yahoo! Japan" domain="yahoo.co.jp">
-        <incoming uri="imap+ssl+://imap.mail.yahoo.co.jp" username="$user" />
-        <outgoing uri="smtp+ssl+://smtp.mail.yahoo.co.jp" username="$user" />
+        <incoming uri="pop3+ssl+://android.pop.mail.yahoo.co.jp" username="$user" />
+        <outgoing uri="smtp+ssl+://android.smtp.mail.yahoo.co.jp" username="$user" />
     </provider>
     <provider id="yahoo-com-XX" label="Country specific Yahoo!" domain="yahoo.com.??">
         <incoming uri="imap+ssl+://android.imap.mail.yahoo.com" username="$email" />

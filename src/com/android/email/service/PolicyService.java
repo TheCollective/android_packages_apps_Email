@@ -16,55 +16,64 @@
 
 package com.android.email.service;
 
-import com.android.email.SecurityPolicy;
-import com.android.emailcommon.provider.Policy;
-import com.android.emailcommon.service.IPolicyService;
-
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.IBinder;
 
+import com.android.email.SecurityPolicy;
+import com.android.emailcommon.provider.Policy;
+import com.android.emailcommon.service.IPolicyService;
+import com.android.mail.utils.LogTag;
+import com.android.mail.utils.LogUtils;
+
 public class PolicyService extends Service {
+    private static final String LOG_TAG = LogTag.getLogTag();
 
     private SecurityPolicy mSecurityPolicy;
     private Context mContext;
 
     private final IPolicyService.Stub mBinder = new IPolicyService.Stub() {
+        @Override
         public boolean isActive(Policy policy) {
-            return mSecurityPolicy.isActive(policy);
+            try {
+                return mSecurityPolicy.isActive(policy);
+            } catch (RuntimeException e) {
+                // Catch, log and rethrow the exception, as otherwise when the exception is
+                // ultimately handled, the complete stack trace is losk
+                LogUtils.e(LOG_TAG, e, "Exception thrown during call to SecurityPolicy#isActive");
+                throw e;
+            }
         }
 
-        public void policiesRequired(long accountId) {
-            mSecurityPolicy.policiesRequired(accountId);
-        }
-
-        public void policiesUpdated(long accountId) {
-            mSecurityPolicy.policiesUpdated(accountId);
-        }
-
+        @Override
         public void setAccountHoldFlag(long accountId, boolean newState) {
             SecurityPolicy.setAccountHoldFlag(mContext, accountId, newState);
         }
 
-        public boolean isActiveAdmin() {
-            return mSecurityPolicy.isActiveAdmin();
-        }
-
+        @Override
         public void remoteWipe() {
-            mSecurityPolicy.remoteWipe();
+            try {
+                mSecurityPolicy.remoteWipe();
+            } catch (RuntimeException e) {
+                // Catch, log and rethrow the exception, as otherwise when the exception is
+                // ultimately handled, the complete stack trace is losk
+                LogUtils.e(LOG_TAG, e, "Exception thrown during call to SecurityPolicy#remoteWipe");
+                throw e;
+            }
         }
 
-        public boolean isSupported(Policy policy) {
-            return mSecurityPolicy.isSupported(policy);
-        }
-
-        public Policy clearUnsupportedPolicies(Policy policy) {
-            return mSecurityPolicy.clearUnsupportedPolicies(policy);
-        }
-
+        @Override
         public void setAccountPolicy(long accountId, Policy policy, String securityKey) {
-            mSecurityPolicy.setAccountPolicy(accountId, policy, securityKey);
+            try {
+                mSecurityPolicy.setAccountPolicy(accountId, policy, securityKey);
+            } catch (RuntimeException e) {
+                // Catch, log and rethrow the exception, as otherwise when the exception is
+                // ultimately handled, the complete stack trace is losk
+                LogUtils.e(LOG_TAG, e,
+                        "Exception thrown from call to SecurityPolicy#setAccountPolicy");
+                throw e;
+            }
         }
     };
 

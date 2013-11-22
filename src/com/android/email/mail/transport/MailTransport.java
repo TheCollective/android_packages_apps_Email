@@ -16,14 +16,15 @@
 
 package com.android.email.mail.transport;
 
-import com.android.email.Email;
-import com.android.email.mail.Transport;
+import android.content.Context;
+
+import com.android.email2.ui.MailActivityEmail;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.mail.CertificateValidationException;
 import com.android.emailcommon.mail.MessagingException;
+import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.utility.SSLUtils;
-
-import android.util.Log;
+import com.android.mail.utils.LogUtils;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -43,11 +44,7 @@ import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSocket;
 
-/**
- * This class implements the common aspects of "transport", one layer below the
- * specific wire protocols such as POP3, IMAP, or SMTP.
- */
-public class MailTransport implements Transport {
+public class MailTransport {
 
     // TODO protected eventually
     /*protected*/ public static final int SOCKET_CONNECT_TIMEOUT = 10000;
@@ -56,111 +53,58 @@ public class MailTransport implements Transport {
     private static final HostnameVerifier HOSTNAME_VERIFIER =
             HttpsURLConnection.getDefaultHostnameVerifier();
 
-    private String mDebugLabel;
-
-    private String mHost;
-    private int mPort;
-    private String[] mUserInfoParts;
-
-    /**
-     * One of the {@code Transport.CONNECTION_SECURITY_*} values.
-     */
-    private int mConnectionSecurity;
-
-    /**
-     * Whether or not to trust all server certificates (i.e. skip host verification) in SSL
-     * handshakes
-     */
-    private boolean mTrustCertificates;
+    private final String mDebugLabel;
+    private final Context mContext;
+    private final HostAuth mHostAuth;
 
     private Socket mSocket;
     private InputStream mIn;
     private OutputStream mOut;
 
-    /**
-     * Simple constructor for starting from scratch.  Call setUri() and setSecurity() to
-     * complete the configuration.
-     * @param debugLabel Label used for Log.d calls
-     */
-    public MailTransport(String debugLabel) {
+    public MailTransport(Context context, String debugLabel, HostAuth hostAuth) {
         super();
+        mContext = context;
         mDebugLabel = debugLabel;
+        mHostAuth = hostAuth;
     }
 
-    /**
+   /**
      * Returns a new transport, using the current transport as a model. The new transport is
      * configured identically (as if {@link #setSecurity(int, boolean)}, {@link #setPort(int)}
      * and {@link #setHost(String)} were invoked), but not opened or connected in any way.
      */
     @Override
-    public Transport clone() {
-        MailTransport newObject = new MailTransport(mDebugLabel);
-
-        newObject.mDebugLabel = mDebugLabel;
-        newObject.mHost = mHost;
-        newObject.mPort = mPort;
-        if (mUserInfoParts != null) {
-            newObject.mUserInfoParts = mUserInfoParts.clone();
-        }
-        newObject.mConnectionSecurity = mConnectionSecurity;
-        newObject.mTrustCertificates = mTrustCertificates;
-        return newObject;
+    public MailTransport clone() {
+        return new MailTransport(mContext, mDebugLabel, mHostAuth);
     }
 
-    @Override
-    public void setHost(String host) {
-        mHost = host;
-    }
-
-    @Override
-    public void setPort(int port) {
-        mPort = port;
-    }
-
-    @Override
     public String getHost() {
-        return mHost;
+        return mHostAuth.mAddress;
     }
 
-    @Override
     public int getPort() {
-        return mPort;
+        return mHostAuth.mPort;
     }
 
-    @Override
-    public void setSecurity(int connectionSecurity, boolean trustAllCertificates) {
-        mConnectionSecurity = connectionSecurity;
-        mTrustCertificates = trustAllCertificates;
-    }
-
-    @Override
-    public int getSecurity() {
-        return mConnectionSecurity;
-    }
-
-    @Override
     public boolean canTrySslSecurity() {
-        return mConnectionSecurity == Transport.CONNECTION_SECURITY_SSL;
+        return (mHostAuth.mFlags & HostAuth.FLAG_SSL) != 0;
     }
 
-    @Override
     public boolean canTryTlsSecurity() {
-        return mConnectionSecurity == Transport.CONNECTION_SECURITY_TLS;
+        return (mHostAuth.mFlags & HostAuth.FLAG_TLS) != 0;
     }
 
-    @Override
     public boolean canTrustAllCertificates() {
-        return mTrustCertificates;
+        return (mHostAuth.mFlags & HostAuth.FLAG_TRUST_ALL) != 0;
     }
 
     /**
      * Attempts to open a connection using the Uri supplied for connection parameters.  Will attempt
      * an SSL connection if indicated.
      */
-    @Override
     public void open() throws MessagingException, CertificateValidationException {
-        if (Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "*** " + mDebugLabel + " open " +
+        if (MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "*** " + mDebugLabel + " open " +
                     getHost() + ":" + String.valueOf(getPort()));
         }
 
@@ -168,7 +112,7 @@ public class MailTransport implements Transport {
             SocketAddress socketAddress = new InetSocketAddress(getHost(), getPort());
             if (canTrySslSecurity()) {
                 mSocket = SSLUtils.getSSLSocketFactory(
-                        canTrustAllCertificates(), SOCKET_CONNECT_TIMEOUT).createSocket();
+                        mContext, mHostAuth, canTrustAllCertificates()).createSocket();
             } else {
                 mSocket = new Socket();
             }
@@ -179,17 +123,22 @@ public class MailTransport implements Transport {
             }
             mIn = new BufferedInputStream(mSocket.getInputStream(), 1024);
             mOut = new BufferedOutputStream(mSocket.getOutputStream(), 512);
-
+            mSocket.setSoTimeout(SOCKET_READ_TIMEOUT);
         } catch (SSLException e) {
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, e.toString());
+            if (MailActivityEmail.DEBUG) {
+                LogUtils.d(Logging.LOG_TAG, e.toString());
             }
             throw new CertificateValidationException(e.getMessage(), e);
         } catch (IOException ioe) {
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, ioe.toString());
+            if (MailActivityEmail.DEBUG) {
+                LogUtils.d(Logging.LOG_TAG, ioe.toString());
             }
             throw new MessagingException(MessagingException.IOERROR, ioe.toString());
+        } catch (IllegalArgumentException iae) {
+            if (MailActivityEmail.DEBUG) {
+                LogUtils.d(Logging.LOG_TAG, iae.toString());
+            }
+            throw new MessagingException(MessagingException.UNSPECIFIED_EXCEPTION, iae.toString());
         }
     }
 
@@ -201,24 +150,22 @@ public class MailTransport implements Transport {
      *
      * TODO should we explicitly close the old socket?  This seems funky to abandon it.
      */
-    @Override
     public void reopenTls() throws MessagingException {
         try {
-            mSocket =
-                    SSLUtils.getSSLSocketFactory(canTrustAllCertificates(), SOCKET_CONNECT_TIMEOUT)
-                            .createSocket(mSocket, getHost(), getPort(), true);
+            mSocket = SSLUtils.getSSLSocketFactory(mContext, mHostAuth, canTrustAllCertificates())
+                    .createSocket(mSocket, getHost(), getPort(), true);
             mSocket.setSoTimeout(SOCKET_READ_TIMEOUT);
             mIn = new BufferedInputStream(mSocket.getInputStream(), 1024);
             mOut = new BufferedOutputStream(mSocket.getOutputStream(), 512);
 
         } catch (SSLException e) {
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, e.toString());
+            if (MailActivityEmail.DEBUG) {
+                LogUtils.d(Logging.LOG_TAG, e.toString());
             }
             throw new CertificateValidationException(e.getMessage(), e);
         } catch (IOException ioe) {
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, ioe.toString());
+            if (MailActivityEmail.DEBUG) {
+                LogUtils.d(Logging.LOG_TAG, ioe.toString());
             }
             throw new MessagingException(MessagingException.IOERROR, ioe.toString());
         }
@@ -242,7 +189,7 @@ public class MailTransport implements Transport {
      * @throws IOException if something goes wrong handshaking with the server
      * @throws SSLPeerUnverifiedException if the server cannot prove its identity
       */
-    private void verifyHostname(Socket socket, String hostname) throws IOException {
+    private static void verifyHostname(Socket socket, String hostname) throws IOException {
         // The code at the start of OpenSSLSocketImpl.startHandshake()
         // ensures that the call is idempotent, so we can safely call it.
         SSLSocket ssl = (SSLSocket) socket;
@@ -267,12 +214,10 @@ public class MailTransport implements Transport {
      * @param timeoutMilliseconds the read timeout value if greater than {@code 0}, or
      *            {@code 0} for an infinite timeout.
      */
-    @Override
     public void setSoTimeout(int timeoutMilliseconds) throws SocketException {
         mSocket.setSoTimeout(timeoutMilliseconds);
     }
 
-    @Override
     public boolean isOpen() {
         return (mIn != null && mOut != null &&
                 mSocket != null && mSocket.isConnected() && !mSocket.isClosed());
@@ -281,48 +226,31 @@ public class MailTransport implements Transport {
     /**
      * Close the connection.  MUST NOT return any exceptions - must be "best effort" and safe.
      */
-    @Override
     public void close() {
-        if (Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "*** " + mDebugLabel + " close " +
-                    getHost() + ":" + String.valueOf(getPort()));
-        }
-
         try {
             mIn.close();
         } catch (Exception e) {
             // May fail if the connection is already closed.
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, e.toString());
-            }
         }
         try {
             mOut.close();
         } catch (Exception e) {
             // May fail if the connection is already closed.
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, e.toString());
-            }
         }
         try {
             mSocket.close();
         } catch (Exception e) {
             // May fail if the connection is already closed.
-            if (Email.DEBUG) {
-                Log.d(Logging.LOG_TAG, e.toString());
-            }
         }
         mIn = null;
         mOut = null;
         mSocket = null;
     }
 
-    @Override
     public InputStream getInputStream() {
         return mIn;
     }
 
-    @Override
     public OutputStream getOutputStream() {
         return mOut;
     }
@@ -330,13 +258,12 @@ public class MailTransport implements Transport {
     /**
      * Writes a single line to the server using \r\n termination.
      */
-    @Override
     public void writeLine(String s, String sensitiveReplacement) throws IOException {
-        if (Email.DEBUG) {
+        if (MailActivityEmail.DEBUG) {
             if (sensitiveReplacement != null && !Logging.DEBUG_SENSITIVE) {
-                Log.d(Logging.LOG_TAG, ">>> " + sensitiveReplacement);
+                LogUtils.d(Logging.LOG_TAG, ">>> " + sensitiveReplacement);
             } else {
-                Log.d(Logging.LOG_TAG, ">>> " + s);
+                LogUtils.d(Logging.LOG_TAG, ">>> " + s);
             }
         }
 
@@ -351,8 +278,7 @@ public class MailTransport implements Transport {
      * Reads a single line from the server, using either \r\n or \n as the delimiter.  The
      * delimiter char(s) are not included in the result.
      */
-    @Override
-    public String readLine() throws IOException {
+    public String readLine(boolean loggable) throws IOException {
         StringBuffer sb = new StringBuffer();
         InputStream in = getInputStream();
         int d;
@@ -365,17 +291,16 @@ public class MailTransport implements Transport {
                 sb.append((char)d);
             }
         }
-        if (d == -1 && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "End of stream reached while trying to read line.");
+        if (d == -1 && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "End of stream reached while trying to read line.");
         }
         String ret = sb.toString();
-        if (Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "<<< " + ret);
+        if (loggable && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "<<< " + ret);
         }
         return ret;
     }
 
-    @Override
     public InetAddress getLocalAddress() {
         if (isOpen()) {
             return mSocket.getLocalAddress();

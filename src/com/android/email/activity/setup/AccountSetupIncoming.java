@@ -16,11 +16,6 @@
 
 package com.android.email.activity.setup;
 
-import com.android.email.R;
-import com.android.email.activity.ActivityHelper;
-import com.android.email.activity.UiUtilities;
-import com.android.emailcommon.provider.Account;
-
 import android.app.Activity;
 import android.app.FragmentTransaction;
 import android.content.Intent;
@@ -28,6 +23,14 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
+
+import com.android.email.R;
+import com.android.email.activity.ActivityHelper;
+import com.android.email.activity.UiUtilities;
+import com.android.email.service.EmailServiceUtils;
+import com.android.email.service.EmailServiceUtils.EmailServiceInfo;
+import com.android.emailcommon.provider.Account;
+import com.android.emailcommon.provider.HostAuth;
 
 /**
  * Provides setup flow for IMAP/POP accounts.
@@ -38,32 +41,61 @@ import android.widget.Button;
 public class AccountSetupIncoming extends AccountSetupActivity
         implements AccountSetupIncomingFragment.Callback, OnClickListener {
 
-    /* package */ AccountSetupIncomingFragment mFragment;
+    /* package */ AccountServerBaseFragment mFragment;
     private Button mNextButton;
     /* package */ boolean mNextButtonEnabled;
+    private boolean mStartedAutoDiscovery;
+    private EmailServiceInfo mServiceInfo;
 
-    public static void actionIncomingSettings(Activity fromActivity, int mode, Account account) {
-        SetupData.setFlowMode(mode);
-        SetupData.setAccount(account);
-        fromActivity.startActivity(new Intent(fromActivity, AccountSetupIncoming.class));
+    // Keys for savedInstanceState
+    private final static String STATE_STARTED_AUTODISCOVERY =
+            "AccountSetupExchange.StartedAutoDiscovery";
+
+    // Extras for AccountSetupIncoming intent
+
+    public static void actionIncomingSettings(Activity fromActivity, SetupData setupData) {
+        final Intent intent = new Intent(fromActivity, AccountSetupIncoming.class);
+        // Add the additional information to the intent, in case the Email process is killed.
+        intent.putExtra(SetupData.EXTRA_SETUP_DATA, setupData);
+        fromActivity.startActivity(intent);
     }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         ActivityHelper.debugSetWindowFlags(this);
-        setContentView(R.layout.account_setup_incoming);
 
-        mFragment = (AccountSetupIncomingFragment)
+        final HostAuth hostAuth = mSetupData.getAccount().mHostAuthRecv;
+        mServiceInfo = EmailServiceUtils.getServiceInfo(this, hostAuth.mProtocol);
+
+        setContentView(R.layout.account_setup_incoming);
+        mFragment = (AccountServerBaseFragment)
                 getFragmentManager().findFragmentById(R.id.setup_fragment);
 
         // Configure fragment
         mFragment.setCallback(this);
 
-        mNextButton = (Button) UiUtilities.getView(this, R.id.next);
+        mNextButton = UiUtilities.getView(this, R.id.next);
         mNextButton.setOnClickListener(this);
         UiUtilities.getView(this, R.id.previous).setOnClickListener(this);
-   }
+
+        // One-shot to launch autodiscovery at the entry to this activity (but not if it restarts)
+        if (mServiceInfo.usesAutodiscover) {
+            mStartedAutoDiscovery = false;
+            if (savedInstanceState != null) {
+                mStartedAutoDiscovery = savedInstanceState.getBoolean(STATE_STARTED_AUTODISCOVERY);
+            }
+            if (!mStartedAutoDiscovery) {
+                startAutoDiscover();
+            }
+        }
+
+        // If we've got a default prefix for this protocol, use it
+        final String prefix = mServiceInfo.inferPrefix;
+        if (prefix != null && !hostAuth.mAddress.startsWith(prefix + ".")) {
+            hostAuth.mAddress = prefix + "." + hostAuth.mAddress;
+        }
+    }
 
     /**
      * Implements View.OnClickListener
@@ -80,11 +112,60 @@ public class AccountSetupIncoming extends AccountSetupActivity
         }
     }
 
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean(STATE_STARTED_AUTODISCOVERY, mStartedAutoDiscovery);
+    }
+
+    /**
+     * If the conditions are right, launch the autodiscover fragment.  If it succeeds (even
+     * partially) it will prefill the setup fields and we can proceed as if the user entered them.
+     *
+     * Conditions for skipping:
+     *  Editing existing account
+     *  AutoDiscover blocked (used for unit testing only)
+     *  Username or password not entered yet
+     */
+    private void startAutoDiscover() {
+        // Note that we've started autodiscovery - even if we decide not to do it,
+        // this prevents repeating.
+        mStartedAutoDiscovery = true;
+
+        if (!mSetupData.isAllowAutodiscover()) {
+            return;
+        }
+
+        final Account account = mSetupData.getAccount();
+        // If we've got a username and password and we're NOT editing, try autodiscover
+        final String username = account.mHostAuthRecv.mLogin;
+        final String password = account.mHostAuthRecv.mPassword;
+        if (username != null && password != null) {
+            onProceedNext(SetupData.CHECK_AUTODISCOVER, mFragment);
+        }
+    }
+
+    public void onAutoDiscoverComplete(int result, SetupData setupData) {
+        // If authentication failed, exit immediately (to re-enter credentials)
+        mSetupData = setupData;
+        if (result == AccountCheckSettingsFragment.AUTODISCOVER_AUTHENTICATION) {
+            finish();
+            return;
+        }
+
+        // If data was returned, proceed to next screen
+        if (result == AccountCheckSettingsFragment.AUTODISCOVER_OK) {
+            mFragment.onNext();
+        }
+        // Otherwise, proceed into this activity for manual setup
+    }
+
     /**
      * Implements AccountServerBaseFragment.Callback
      *
      * Launches the account checker.  Positive results are reported to onCheckSettingsOk().
      */
+    @Override
     public void onProceedNext(int checkMode, AccountServerBaseFragment target) {
         AccountCheckSettingsFragment checkerFragment =
             AccountCheckSettingsFragment.newInstance(checkMode, target);
@@ -97,6 +178,7 @@ public class AccountSetupIncoming extends AccountSetupActivity
     /**
      * Implements AccountServerBaseFragment.Callback
      */
+    @Override
     public void onEnableProceedButtons(boolean enable) {
         mNextButtonEnabled = enable;
         mNextButton.setEnabled(enable);
@@ -107,11 +189,16 @@ public class AccountSetupIncoming extends AccountSetupActivity
      *
      * If the checked settings are OK, proceed to outgoing settings screen
      */
-    public void onCheckSettingsComplete(int result, int setupMode) {
+    @Override
+    public void onCheckSettingsComplete(int result, SetupData setupData) {
+        mSetupData = setupData;
         if (result == AccountCheckSettingsFragment.CHECK_SETTINGS_OK) {
-            AccountSetupOutgoing.actionOutgoingSettings(this, SetupData.getFlowMode(),
-                    SetupData.getAccount());
-            finish();
+            if (mServiceInfo.usesSmtp) {
+                AccountSetupOutgoing.actionOutgoingSettings(this, mSetupData);
+            } else {
+                AccountSetupOptions.actionOptions(this, mSetupData);
+                finish();
+            }
         }
     }
 }

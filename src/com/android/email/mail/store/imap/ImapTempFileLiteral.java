@@ -20,10 +20,9 @@ import com.android.email.FixedLengthInputStream;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.TempDirectory;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.utils.LogUtils;
 
 import org.apache.commons.io.IOUtils;
-
-import android.util.Log;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -77,7 +76,7 @@ public class ImapTempFileLiteral extends ImapString {
             return new FileInputStream(mFile);
         } catch (FileNotFoundException e) {
             // It's probably possible if we're low on storage and the system clears the cache dir.
-            Log.w(Logging.LOG_TAG, "ImapTempFileLiteral: Temp file not found");
+            LogUtils.w(Logging.LOG_TAG, "ImapTempFileLiteral: Temp file not found");
 
             // Return 0 byte stream as a dummy...
             return new ByteArrayInputStream(new byte[0]);
@@ -88,9 +87,14 @@ public class ImapTempFileLiteral extends ImapString {
     public String getString() {
         checkNotDestroyed();
         try {
-            return Utility.fromAscii(IOUtils.toByteArray(getAsStream()));
+            byte[] bytes = IOUtils.toByteArray(getAsStream());
+            // Prevent crash from OOM; we've seen this, but only rarely and not reproducibly
+            if (bytes.length > ImapResponseParser.LITERAL_KEEP_IN_MEMORY_THRESHOLD) {
+                throw new IOException();
+            }
+            return Utility.fromAscii(bytes);
         } catch (IOException e) {
-            Log.w(Logging.LOG_TAG, "ImapTempFileLiteral: Error while reading temp file");
+            LogUtils.w(Logging.LOG_TAG, "ImapTempFileLiteral: Error while reading temp file", e);
             return "";
         }
     }
@@ -103,7 +107,7 @@ public class ImapTempFileLiteral extends ImapString {
             }
         } catch (RuntimeException re) {
             // Just log and ignore.
-            Log.w(Logging.LOG_TAG, "Failed to remove temp file: " + re.getMessage());
+            LogUtils.w(Logging.LOG_TAG, "Failed to remove temp file: " + re.getMessage());
         }
         super.destroy();
     }

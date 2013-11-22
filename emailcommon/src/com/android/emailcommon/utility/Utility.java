@@ -38,7 +38,6 @@ import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.text.style.StyleSpan;
 import android.util.Base64;
-import android.util.Log;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -50,12 +49,10 @@ import com.android.emailcommon.provider.EmailContent.AccountColumns;
 import com.android.emailcommon.provider.EmailContent.Attachment;
 import com.android.emailcommon.provider.EmailContent.AttachmentColumns;
 import com.android.emailcommon.provider.EmailContent.HostAuthColumns;
-import com.android.emailcommon.provider.EmailContent.MailboxColumns;
 import com.android.emailcommon.provider.EmailContent.Message;
-import com.android.emailcommon.provider.EmailContent.MessageColumns;
 import com.android.emailcommon.provider.HostAuth;
-import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.provider.ProviderUnavailableException;
+import com.android.mail.utils.LogUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -149,24 +146,6 @@ public class Utility {
         }
         return sb.toString();
     }
-    public static String base64Decode(String encoded) {
-        if (encoded == null) {
-            return null;
-        }
-        byte[] decoded = Base64.decode(encoded, Base64.DEFAULT);
-        return new String(decoded);
-    }
-
-    public static String base64Encode(String s) {
-        if (s == null) {
-            return s;
-        }
-        return Base64.encodeToString(s.getBytes(), Base64.NO_WRAP);
-    }
-
-    public static boolean isTextViewNotEmpty(TextView view) {
-        return !TextUtils.isEmpty(view.getText());
-    }
 
     public static boolean isPortFieldValid(TextView view) {
         CharSequence chars = view.getText();
@@ -209,34 +188,6 @@ public class Utility {
             return true;
         } catch (URISyntaxException e) {
             return false;
-        }
-    }
-
-    /**
-     * Ensures that the given string starts and ends with the double quote character. The string is
-     * not modified in any way except to add the double quote character to start and end if it's not
-     * already there.
-     *
-     * TODO: Rename this, because "quoteString()" can mean so many different things.
-     *
-     * sample -> "sample"
-     * "sample" -> "sample"
-     * ""sample"" -> "sample"
-     * "sample"" -> "sample"
-     * sa"mp"le -> "sa"mp"le"
-     * "sa"mp"le" -> "sa"mp"le"
-     * (empty string) -> ""
-     * " -> ""
-     */
-    public static String quoteString(String s) {
-        if (s == null) {
-            return null;
-        }
-        if (!s.matches("^\".*\"$")) {
-            return "\"" + s + "\"";
-        }
-        else {
-            return s;
         }
     }
 
@@ -327,6 +278,46 @@ public class Utility {
     }
 
     /**
+     * This only actually matches against the email address. It's technically kosher to allow the
+     * same address across different account types, but that's a pretty rare use case and isn't well
+     * handled in the UI.
+     *
+     * @param context context
+     * @param syncAuthority the account manager type to check against or null for all types
+     * @param address email address to match against
+     * @return account name for match found or null
+     */
+   public static String findExistingAccount(final Context context, final String syncAuthority,
+           final String address) {
+       final ContentResolver resolver = context.getContentResolver();
+       final Cursor c = resolver.query(Account.CONTENT_URI, Account.CONTENT_PROJECTION,
+               AccountColumns.EMAIL_ADDRESS + "=?", new String[] {address}, null);
+       try {
+           if (!c.moveToFirst()) {
+               return null;
+           }
+           return c.getString(c.getColumnIndex(Account.DISPLAY_NAME));
+           /*
+           do {
+               if (syncAuthority != null) {
+                   // TODO: actually compare the sync authority to allow creating the same account
+                   // on different protocols. Sadly this code can't directly access the service info
+               } else {
+                   final Account account = new Account();
+                   account.restore(c);
+                   return account.mDisplayName;
+               }
+           } while (c.moveToNext());
+           */
+       } finally {
+           c.close();
+       }
+       /*
+       return null;
+       */
+   }
+
+    /**
      * Generate a random message-id header for locally-generated messages.
      */
     public static String generateMessageId() {
@@ -364,6 +355,7 @@ public class Utility {
         cal.setTimeZone(TimeZone.getTimeZone("GMT"));
         return cal;
     }
+
     /**
      * Generate a time in milliseconds from an email date string that represents a date/time in GMT
      * @param date string in format 2010-02-23T16:00:00.000Z (ISO 8601, rfc3339)
@@ -745,25 +737,47 @@ public class Utility {
             return false;
         } else if (attachment.mContentBytes != null) {
             return true;
-        } else if (TextUtils.isEmpty(attachment.mContentUri)) {
-            return false;
-        }
-        try {
-            Uri fileUri = Uri.parse(attachment.mContentUri);
-            try {
-                InputStream inStream = context.getContentResolver().openInputStream(fileUri);
+        } else {
+            final String cachedFile = attachment.getCachedFileUri();
+            // Try the cached file first
+            if (!TextUtils.isEmpty(cachedFile)) {
+                final Uri cachedFileUri = Uri.parse(cachedFile);
                 try {
-                    inStream.close();
-                } catch (IOException e) {
-                    // Nothing to be done if can't close the stream
+                    final InputStream inStream =
+                            context.getContentResolver().openInputStream(cachedFileUri);
+                    try {
+                        inStream.close();
+                    } catch (IOException e) {
+                        // Nothing to be done if can't close the stream
+                    }
+                    return true;
+                } catch (FileNotFoundException e) {
+                    // We weren't able to open the file, try the content uri below
+                    LogUtils.e(Logging.LOG_TAG, e, "not able to open cached file");
                 }
-                return true;
-            } catch (FileNotFoundException e) {
+            }
+            final String contentUri = attachment.getContentUri();
+            if (TextUtils.isEmpty(contentUri)) {
                 return false;
             }
-        } catch (RuntimeException re) {
-            Log.w(Logging.LOG_TAG, "attachmentExists RuntimeException=" + re);
-            return false;
+            try {
+                final Uri fileUri = Uri.parse(contentUri);
+                try {
+                    final InputStream inStream =
+                            context.getContentResolver().openInputStream(fileUri);
+                    try {
+                        inStream.close();
+                    } catch (IOException e) {
+                        // Nothing to be done if can't close the stream
+                    }
+                    return true;
+                } catch (FileNotFoundException e) {
+                    return false;
+                }
+            } catch (RuntimeException re) {
+                LogUtils.w(Logging.LOG_TAG, "attachmentExists RuntimeException=" + re);
+                return false;
+            }
         }
     }
 
@@ -787,10 +801,20 @@ public class Utility {
                 // alternative.  In theory, this situation shouldn't be possible.
                 if ((att.mFlags & (Attachment.FLAG_DOWNLOAD_FORWARD |
                         Attachment.FLAG_DOWNLOAD_USER_REQUEST)) == 0) {
-                    Log.d(Logging.LOG_TAG, "Unloaded attachment isn't marked for download: " +
+                    LogUtils.d(Logging.LOG_TAG, "Unloaded attachment isn't marked for download: " +
                             att.mFileName + ", #" + att.mId);
+                    Account acct = Account.restoreAccountWithId(context, msg.mAccountKey);
+                    if (acct == null) return true;
+                    // If smart forward is set and the message is a forward, we'll act as though
+                    // the attachment has been loaded
+                    // In Email1 this test wasn't necessary, as the UI handled it...
+                    if ((msg.mFlags & Message.FLAG_TYPE_FORWARD) != 0) {
+                        if ((acct.mFlags & Account.FLAGS_SUPPORTS_SMART_FORWARD) != 0) {
+                            continue;
+                        }
+                    }
                     Attachment.delete(context, Attachment.CONTENT_URI, att.mId);
-                } else if (att.mContentUri != null) {
+                } else if (att.getContentUri() != null) {
                     // In this case, the attachment file is gone from the cache; let's clear the
                     // contentUri; this should be a very unusual case
                     ContentValues cv = new ContentValues();
@@ -888,72 +912,6 @@ public class Utility {
          */
         protected void onFinished() {
         }
-    }
-
-    /**
-     * Updates the last seen message key in the mailbox data base for the INBOX of the currently
-     * shown account. If the account is {@link Account#ACCOUNT_ID_COMBINED_VIEW}, the INBOX for
-     * all accounts are updated.
-     * @return an {@link EmailAsyncTask} for test only.
-     */
-    public static EmailAsyncTask<Void, Void, Void> updateLastNotifiedMessageKey(
-            final Context context, final long mailboxId) {
-        return EmailAsyncTask.runAsyncParallel(new Runnable() {
-            private void updateLastSeenMessageKeyForMailbox(long mailboxId) {
-                ContentResolver resolver = context.getContentResolver();
-                if (mailboxId == Mailbox.QUERY_ALL_INBOXES) {
-                    Cursor c = resolver.query(
-                            Mailbox.CONTENT_URI, EmailContent.ID_PROJECTION, Mailbox.TYPE + "=?",
-                            new String[] { Integer.toString(Mailbox.TYPE_INBOX) }, null);
-                    if (c == null) throw new ProviderUnavailableException();
-                    try {
-                        while (c.moveToNext()) {
-                            final long id = c.getLong(EmailContent.ID_PROJECTION_COLUMN);
-                            updateLastSeenMessageKeyForMailbox(id);
-                        }
-                    } finally {
-                        c.close();
-                    }
-                } else if (mailboxId > 0L) {
-                    Mailbox mailbox = Mailbox.restoreMailboxWithId(context, mailboxId);
-                   // mailbox has been removed
-                    if (mailbox == null) {
-                        return;
-                    }
-                    // We use the highest _id for the account the mailbox table as the "last seen
-                    // message key". We don't care if the message has been read or not. We only
-                    // need a point at which we can compare against in the future. By setting this
-                    // value, we are claiming that every message before this has potentially been
-                    // seen by the user.
-                    long mostRecentMessageId = Utility.getFirstRowLong(context,
-                            ContentUris.withAppendedId(
-                                    EmailContent.MAILBOX_MOST_RECENT_MESSAGE_URI, mailboxId),
-                            Message.ID_COLUMN_PROJECTION, null, null, null,
-                            Message.ID_MAILBOX_COLUMN_ID, -1L);
-                    long lastNotifiedMessageId = mailbox.mLastNotifiedMessageKey;
-                    // Only update the db if the value has changed
-                    if (mostRecentMessageId != lastNotifiedMessageId) {
-                        Log.d(Logging.LOG_TAG, "Most recent = " + mostRecentMessageId +
-                                ", last notified: " + lastNotifiedMessageId +
-                                "; updating last notified");
-                        ContentValues values = mailbox.toContentValues();
-                        values.put(MailboxColumns.LAST_NOTIFIED_MESSAGE_KEY, mostRecentMessageId);
-                        resolver.update(
-                                Mailbox.CONTENT_URI,
-                                values,
-                                EmailContent.ID_SELECTION,
-                                new String[] { Long.toString(mailbox.mId) });
-                    } else {
-                        Log.d(Logging.LOG_TAG, "Most recent = last notified; no change");
-                    }
-                }
-            }
-
-            @Override
-            public void run() {
-                updateLastSeenMessageKeyForMailbox(mailboxId);
-            }
-        });
     }
 
     public static long[] toPrimitiveLongArray(Collection<Long> collection) {
@@ -1089,10 +1047,10 @@ public class Utility {
                 return;
             }
             if (c.isClosed()) {
-                Log.w(Logging.LOG_TAG, "Cursor was closed here: Cursor=" + c,
+                LogUtils.w(Logging.LOG_TAG, "Cursor was closed here: Cursor=" + c,
                         getTraceIfAvailable(c));
             } else {
-                Log.w(Logging.LOG_TAG, "Cursor not closed.  Cursor=" + c);
+                LogUtils.w(Logging.LOG_TAG, "Cursor not closed.  Cursor=" + c);
             }
         }
 
@@ -1149,73 +1107,5 @@ public class Utility {
         }
         sb.append(')');
         return sb.toString();
-    }
-
-    /**
-     * Updates the last seen message key in the mailbox data base for the INBOX of the currently
-     * shown account. If the account is {@link Account#ACCOUNT_ID_COMBINED_VIEW}, the INBOX for
-     * all accounts are updated.
-     * @return an {@link EmailAsyncTask} for test only.
-     */
-    public static EmailAsyncTask<Void, Void, Void> updateLastSeenMessageKey(final Context context,
-            final long accountId) {
-        return EmailAsyncTask.runAsyncParallel(new Runnable() {
-            private void updateLastSeenMessageKeyForAccount(long accountId) {
-                ContentResolver resolver = context.getContentResolver();
-                if (accountId == Account.ACCOUNT_ID_COMBINED_VIEW) {
-                    Cursor c = resolver.query(
-                            Account.CONTENT_URI, EmailContent.ID_PROJECTION, null, null, null);
-                    if (c == null) throw new ProviderUnavailableException();
-                    try {
-                        while (c.moveToNext()) {
-                            final long id = c.getLong(EmailContent.ID_PROJECTION_COLUMN);
-                            updateLastSeenMessageKeyForAccount(id);
-                        }
-                    } finally {
-                        c.close();
-                    }
-                } else if (accountId > 0L) {
-                    Mailbox mailbox =
-                        Mailbox.restoreMailboxOfType(context, accountId, Mailbox.TYPE_INBOX);
-
-                    // mailbox has been removed
-                    if (mailbox == null) {
-                        return;
-                    }
-                    // We use the highest _id for the account the mailbox table as the "last seen
-                    // message key". We don't care if the message has been read or not. We only
-                    // need a point at which we can compare against in the future. By setting this
-                    // value, we are claiming that every message before this has potentially been
-                    // seen by the user.
-                    long messageId = Utility.getFirstRowLong(
-                            context,
-                            Message.CONTENT_URI,
-                            EmailContent.ID_PROJECTION,
-                            MessageColumns.MAILBOX_KEY + "=?",
-                            new String[] { Long.toString(mailbox.mId) },
-                            MessageColumns.ID + " DESC",
-                            EmailContent.ID_PROJECTION_COLUMN, 0L);
-                    long oldLastSeenMessageId = Utility.getFirstRowLong(
-                            context, ContentUris.withAppendedId(Mailbox.CONTENT_URI, mailbox.mId),
-                            new String[] { MailboxColumns.LAST_SEEN_MESSAGE_KEY },
-                            null, null, null, 0, 0L);
-                    // Only update the db if the value has changed
-                    if (messageId != oldLastSeenMessageId) {
-                        ContentValues values = mailbox.toContentValues();
-                        values.put(MailboxColumns.LAST_SEEN_MESSAGE_KEY, messageId);
-                        resolver.update(
-                                Mailbox.CONTENT_URI,
-                                values,
-                                EmailContent.ID_SELECTION,
-                                new String[] { Long.toString(mailbox.mId) });
-                    }
-                }
-            }
-
-            @Override
-            public void run() {
-                updateLastSeenMessageKeyForAccount(accountId);
-            }
-        });
     }
 }

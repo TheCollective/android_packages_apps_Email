@@ -24,15 +24,18 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.OperationApplicationException;
 import android.database.Cursor;
+import android.media.RingtoneManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.RemoteException;
+import android.text.TextUtils;
 
 import com.android.emailcommon.provider.EmailContent.AccountColumns;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.utils.LogUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,16 +43,6 @@ import java.util.UUID;
 
 public final class Account extends EmailContent implements AccountColumns, Parcelable {
     public static final String TABLE_NAME = "Account";
-    @SuppressWarnings("hiding")
-    public static final Uri CONTENT_URI = Uri.parse(EmailContent.CONTENT_URI + "/account");
-    public static final Uri ADD_TO_FIELD_URI =
-        Uri.parse(EmailContent.CONTENT_URI + "/accountIdAddToField");
-    public static final Uri RESET_NEW_MESSAGE_COUNT_URI =
-        Uri.parse(EmailContent.CONTENT_URI + "/resetNewMessageCount");
-    public static final Uri NOTIFIER_URI =
-        Uri.parse(EmailContent.CONTENT_NOTIFIER_URI + "/account");
-    public static final Uri DEFAULT_ACCOUNT_ID_URI =
-        Uri.parse(EmailContent.CONTENT_URI + "/account/default");
 
     // Define all pseudo account IDs here to avoid conflict with one another.
     /**
@@ -67,9 +60,19 @@ public final class Account extends EmailContent implements AccountColumns, Parce
      */
     public static final long NO_ACCOUNT = -1L;
 
-    // Whether or not the user has asked for notifications of new mail in this account
+    /**
+     * Whether or not the user has asked for notifications of new mail in this account
+     *
+     * @deprecated Used only for migration
+     */
+    @Deprecated
     public final static int FLAGS_NOTIFY_NEW_MAIL = 1<<0;
-    // Whether or not the user has asked for vibration notifications with all new mail
+    /**
+     * Whether or not the user has asked for vibration notifications with all new mail
+     *
+     * @deprecated Used only for migration
+     */
+    @Deprecated
     public final static int FLAGS_VIBRATE = 1<<1;
     // Bit mask for the account's deletion policy (see DELETE_POLICY_x below)
     public static final int FLAGS_DELETE_POLICY_MASK = 1<<2 | 1<<3;
@@ -98,8 +101,8 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     // Whether or not server-side search supports global search (i.e. all mailboxes); only valid
     // if FLAGS_SUPPORTS_SEARCH is true
     public static final int FLAGS_SUPPORTS_GLOBAL_SEARCH = 1<<12;
-    // Defines if the user wants to enable the notification LED
-    public final static int FLAGS_NOTIFY_USE_LED = 1<<13;
+    // Whether or not the initial folder list has been loaded
+    public static final int FLAGS_INITIAL_FOLDER_LIST_LOADED = 1<<13;
 
     // Deletion policy (see FLAGS_DELETE_POLICY_MASK, above)
     public static final int DELETE_POLICY_NEVER = 0;
@@ -110,6 +113,16 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     public static final int CHECK_INTERVAL_NEVER = -1;
     public static final int CHECK_INTERVAL_PUSH = -2;
 
+    public static Uri CONTENT_URI;
+    public static Uri RESET_NEW_MESSAGE_COUNT_URI;
+    public static Uri NOTIFIER_URI;
+
+    public static void initAccount() {
+        CONTENT_URI = Uri.parse(EmailContent.CONTENT_URI + "/account");
+        RESET_NEW_MESSAGE_COUNT_URI = Uri.parse(EmailContent.CONTENT_URI + "/resetNewMessageCount");
+        NOTIFIER_URI = Uri.parse(EmailContent.CONTENT_NOTIFIER_URI + "/account");
+    }
+
     public String mDisplayName;
     public String mEmailAddress;
     public String mSyncKey;
@@ -118,26 +131,22 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     public long mHostAuthKeyRecv;
     public long mHostAuthKeySend;
     public int mFlags;
-    public boolean mIsDefault;          // note: callers should use getDefaultAccountId()
     public String mCompatibilityUuid;
     public String mSenderName;
-    public String mRingtoneUri;
+    /** @deprecated Used only for migration */
+    @Deprecated
+    private String mRingtoneUri;
     public String mProtocolVersion;
     public int mNewMessageCount;
     public String mSecuritySyncKey;
     public String mSignature;
     public long mPolicyKey;
-
-    // For compatibility with Email1
-    public long mNotifiedMessageId;
-    public int mNotifiedMessageCount;
+    public long mPingDuration;
 
     // Convenience for creating/working with an account
     public transient HostAuth mHostAuthRecv;
     public transient HostAuth mHostAuthSend;
     public transient Policy mPolicy;
-    // Might hold the corresponding AccountManager account structure
-    public transient android.accounts.Account mAmAccount;
 
     public static final int CONTENT_ID_COLUMN = 0;
     public static final int CONTENT_DISPLAY_NAME_COLUMN = 1;
@@ -148,28 +157,25 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     public static final int CONTENT_HOST_AUTH_KEY_RECV_COLUMN = 6;
     public static final int CONTENT_HOST_AUTH_KEY_SEND_COLUMN = 7;
     public static final int CONTENT_FLAGS_COLUMN = 8;
-    public static final int CONTENT_IS_DEFAULT_COLUMN = 9;
-    public static final int CONTENT_COMPATIBILITY_UUID_COLUMN = 10;
-    public static final int CONTENT_SENDER_NAME_COLUMN = 11;
-    public static final int CONTENT_RINGTONE_URI_COLUMN = 12;
-    public static final int CONTENT_PROTOCOL_VERSION_COLUMN = 13;
-    public static final int CONTENT_NEW_MESSAGE_COUNT_COLUMN = 14;
-    public static final int CONTENT_SECURITY_SYNC_KEY_COLUMN = 15;
-    public static final int CONTENT_SIGNATURE_COLUMN = 16;
-    public static final int CONTENT_POLICY_KEY = 17;
-    public static final int CONTENT_NOTIFIED_MESSAGE_ID_COLUMN = 18;
-    public static final int CONTENT_NOTIFIED_MESSAGE_COUNT_COLUMN = 19;
+    public static final int CONTENT_COMPATIBILITY_UUID_COLUMN = 9;
+    public static final int CONTENT_SENDER_NAME_COLUMN = 10;
+    public static final int CONTENT_RINGTONE_URI_COLUMN = 11;
+    public static final int CONTENT_PROTOCOL_VERSION_COLUMN = 12;
+    public static final int CONTENT_NEW_MESSAGE_COUNT_COLUMN = 13;
+    public static final int CONTENT_SECURITY_SYNC_KEY_COLUMN = 14;
+    public static final int CONTENT_SIGNATURE_COLUMN = 15;
+    public static final int CONTENT_POLICY_KEY_COLUMN = 16;
+    public static final int CONTENT_PING_DURATION_COLUMN = 17;
 
     public static final String[] CONTENT_PROJECTION = new String[] {
         RECORD_ID, AccountColumns.DISPLAY_NAME,
         AccountColumns.EMAIL_ADDRESS, AccountColumns.SYNC_KEY, AccountColumns.SYNC_LOOKBACK,
         AccountColumns.SYNC_INTERVAL, AccountColumns.HOST_AUTH_KEY_RECV,
-        AccountColumns.HOST_AUTH_KEY_SEND, AccountColumns.FLAGS, AccountColumns.IS_DEFAULT,
+        AccountColumns.HOST_AUTH_KEY_SEND, AccountColumns.FLAGS,
         AccountColumns.COMPATIBILITY_UUID, AccountColumns.SENDER_NAME,
         AccountColumns.RINGTONE_URI, AccountColumns.PROTOCOL_VERSION,
         AccountColumns.NEW_MESSAGE_COUNT, AccountColumns.SECURITY_SYNC_KEY,
-        AccountColumns.SIGNATURE, AccountColumns.POLICY_KEY,
-        AccountColumns.NOTIFIED_MESSAGE_ID, AccountColumns.NOTIFIED_MESSAGE_COUNT
+        AccountColumns.SIGNATURE, AccountColumns.POLICY_KEY, AccountColumns.PING_DURATION
     };
 
     public static final int CONTENT_MAILBOX_TYPE_COLUMN = 1;
@@ -202,23 +208,16 @@ public final class Account extends EmailContent implements AccountColumns, Parce
             " AND " + MailboxColumns.ACCOUNT_KEY + " =?";
 
     /**
-     * This projection is for searching for the default account
-     */
-    private static final String[] DEFAULT_ID_PROJECTION = new String[] {
-        RECORD_ID, IS_DEFAULT
-    };
-
-    /**
      * no public constructor since this is a utility class
      */
     public Account() {
         mBaseUri = CONTENT_URI;
 
         // other defaults (policy)
-        mRingtoneUri = "content://settings/system/notification_sound";
+        mRingtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION).toString();
         mSyncInterval = -1;
         mSyncLookback = -1;
-        mFlags = FLAGS_NOTIFY_NEW_MAIL;
+        mFlags = 0;
         mCompatibilityUuid = UUID.randomUUID().toString();
     }
 
@@ -265,7 +264,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         mHostAuthKeyRecv = cursor.getLong(CONTENT_HOST_AUTH_KEY_RECV_COLUMN);
         mHostAuthKeySend = cursor.getLong(CONTENT_HOST_AUTH_KEY_SEND_COLUMN);
         mFlags = cursor.getInt(CONTENT_FLAGS_COLUMN);
-        mIsDefault = cursor.getInt(CONTENT_IS_DEFAULT_COLUMN) == 1;
         mCompatibilityUuid = cursor.getString(CONTENT_COMPATIBILITY_UUID_COLUMN);
         mSenderName = cursor.getString(CONTENT_SENDER_NAME_COLUMN);
         mRingtoneUri = cursor.getString(CONTENT_RINGTONE_URI_COLUMN);
@@ -273,13 +271,16 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         mNewMessageCount = cursor.getInt(CONTENT_NEW_MESSAGE_COUNT_COLUMN);
         mSecuritySyncKey = cursor.getString(CONTENT_SECURITY_SYNC_KEY_COLUMN);
         mSignature = cursor.getString(CONTENT_SIGNATURE_COLUMN);
-        mPolicyKey = cursor.getLong(CONTENT_POLICY_KEY);
-        mNotifiedMessageId = cursor.getLong(CONTENT_NOTIFIED_MESSAGE_ID_COLUMN);
-        mNotifiedMessageCount = cursor.getInt(CONTENT_NOTIFIED_MESSAGE_COUNT_COLUMN);
+        mPolicyKey = cursor.getLong(CONTENT_POLICY_KEY_COLUMN);
+        mPingDuration = cursor.getLong(CONTENT_PING_DURATION_COLUMN);
     }
 
-    private long getId(Uri u) {
+    private static long getId(Uri u) {
         return Long.parseLong(u.getPathSegments().get(1));
+    }
+
+    public long getId() {
+        return mId;
     }
 
     /**
@@ -371,10 +372,21 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     }
 
     /**
+     * @return the current ping duration.
+     */
+    public long getPingDuration() {
+        return mPingDuration;
+    }
+
+    /**
+     * Set the ping duration.  Be sure to call save() to commit to database.
+     */
+    public void setPingDuration(long value) {
+        mPingDuration = value;
+    }
+
+    /**
      * @return the flags for this account
-     * @see #FLAGS_NOTIFY_NEW_MAIL
-     * @see #FLAGS_NOTIFY_USE_LED
-     * @see #FLAGS_VIBRATE
      */
     public int getFlags() {
         return mFlags;
@@ -382,9 +394,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
 
     /**
      * Set the flags for this account
-     * @see #FLAGS_NOTIFY_NEW_MAIL
-     * @see #FLAGS_NOTIFY_USE_LED
-     * @see #FLAGS_VIBRATE
      * @param newFlags the new value for the flags
      */
     public void setFlags(int newFlags) {
@@ -393,17 +402,11 @@ public final class Account extends EmailContent implements AccountColumns, Parce
 
     /**
      * @return the ringtone Uri for this account
+     * @deprecated Used only for migration
      */
+    @Deprecated
     public String getRingtone() {
         return mRingtoneUri;
-    }
-
-    /**
-     * Set the ringtone Uri for this account
-     * @param newUri the new URI string for the ringtone for this account
-     */
-    public void setRingtone(String newUri) {
-        mRingtoneUri = newUri;
     }
 
     /**
@@ -464,36 +467,12 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     }
 
     /**
-     * @return true if the instance is of an EAS account.
-     *
-     * NOTE This method accesses the DB if {@link #mHostAuthRecv} hasn't been restored yet.
-     * Use caution when you use this on the main thread.
-     */
-    public boolean isEasAccount(Context context) {
-        return "eas".equals(getProtocol(context));
-    }
-
-    public boolean supportsMoveMessages(Context context) {
-        String protocol = getProtocol(context);
-        return "eas".equals(protocol) || "imap".equals(protocol);
-    }
-
-    /**
      * @return true if the account supports "search".
      */
     public static boolean supportsServerSearch(Context context, long accountId) {
         Account account = Account.restoreAccountWithId(context, accountId);
         if (account == null) return false;
         return (account.mFlags & Account.FLAGS_SUPPORTS_SEARCH) != 0;
-    }
-
-    /**
-     * Set the account to be the default account.  If this is set to "true", when the account
-     * is saved, all other accounts will have the same value set to "false".
-     * @param newDefaultState the new default state - if true, others will be cleared.
-     */
-    public void setDefaultAccount(boolean newDefaultState) {
-        mIsDefault = newDefaultState;
     }
 
     /**
@@ -527,7 +506,7 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     public static long getAccountIdFromShortcutSafeUri(Context context, Uri uri) {
         // Make sure the URI is in the correct format.
         if (!"content".equals(uri.getScheme())
-                || !AUTHORITY.equals(uri.getAuthority())) {
+                || !EmailContent.AUTHORITY.equals(uri.getAuthority())) {
             return -1;
         }
 
@@ -561,22 +540,39 @@ public final class Account extends EmailContent implements AccountColumns, Parce
     }
 
     /**
-     * Return the id of the default account.  If one hasn't been explicitly specified, return
-     * the first one in the database (the logic is provided within EmailProvider)
+     * Return the id of the default account. If one hasn't been explicitly specified, return the
+     * first one in the database. If no account exists, returns {@link #NO_ACCOUNT}.
+     *
      * @param context the caller's context
-     * @return the id of the default account, or Account.NO_ACCOUNT if there are no accounts
+     * @param lastUsedAccountId the last used account id, which is the basis of the default account
      */
-    static public long getDefaultAccountId(Context context) {
-        Cursor c = context.getContentResolver().query(
-                Account.DEFAULT_ACCOUNT_ID_URI, Account.ID_PROJECTION, null, null, null);
+    public static long getDefaultAccountId(final Context context, final long lastUsedAccountId) {
+        final Cursor cursor = context.getContentResolver().query(
+                CONTENT_URI, ID_PROJECTION, null, null, null);
+
+        long firstAccount = NO_ACCOUNT;
+
         try {
-            if (c != null && c.moveToFirst()) {
-                return c.getLong(Account.ID_PROJECTION_COLUMN);
+            if (cursor != null && cursor.moveToFirst()) {
+                do {
+                    final long accountId = cursor.getLong(Account.ID_PROJECTION_COLUMN);
+
+                    if (accountId == lastUsedAccountId) {
+                        return accountId;
+                    }
+
+                    if (firstAccount == NO_ACCOUNT) {
+                        firstAccount = accountId;
+                    }
+                } while (cursor.moveToNext());
             }
         } finally {
-            c.close();
+            if (cursor != null) {
+                cursor.close();
+            }
         }
-        return Account.NO_ACCOUNT;
+
+        return firstAccount;
     }
 
     /**
@@ -604,6 +600,16 @@ public final class Account extends EmailContent implements AccountColumns, Parce
             return hostAuth.mProtocol;
         }
         return null;
+    }
+
+    /**
+     * Return a corresponding account manager object using the passed in type
+     *
+     * @param type We can't look up the account type from here, so pass it in
+     * @return system account object
+     */
+    public android.accounts.Account getAccountManagerAccount(String type) {
+        return new android.accounts.Account(mEmailAddress, type);
     }
 
     /**
@@ -714,35 +720,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         return policy.mRequireManualSyncWhenRoaming;
     }
 
-    /**
-     * Override update to enforce a single default account, and do it atomically
-     */
-    @Override
-    public int update(Context context, ContentValues cv) {
-        if (cv.containsKey(AccountColumns.IS_DEFAULT) &&
-                cv.getAsBoolean(AccountColumns.IS_DEFAULT)) {
-            ArrayList<ContentProviderOperation> ops = new ArrayList<ContentProviderOperation>();
-            ContentValues cv1 = new ContentValues();
-            cv1.put(AccountColumns.IS_DEFAULT, false);
-            // Clear the default flag in all accounts
-            ops.add(ContentProviderOperation.newUpdate(CONTENT_URI).withValues(cv1).build());
-            // Update this account
-            ops.add(ContentProviderOperation
-                    .newUpdate(ContentUris.withAppendedId(CONTENT_URI, mId))
-                    .withValues(cv).build());
-            try {
-                context.getContentResolver().applyBatch(AUTHORITY, ops);
-                return 1;
-            } catch (RemoteException e) {
-                // There is nothing to be done here; fail by returning 0
-            } catch (OperationApplicationException e) {
-                // There is nothing to be done here; fail by returning 0
-            }
-            return 0;
-        }
-        return super.update(context, cv);
-    }
-
     /*
      * Override this so that we can store the HostAuth's first and link them to the Account
      * (non-Javadoc)
@@ -756,8 +733,7 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         // This logic is in place so I can (a) short circuit the expensive stuff when
         // possible, and (b) override (and throw) if anyone tries to call save() or update()
         // directly for Account, which are unsupported.
-        if (mHostAuthRecv == null && mHostAuthSend == null && mIsDefault == false &&
-                mPolicy != null) {
+        if (mHostAuthRecv == null && mHostAuthSend == null && mPolicy != null) {
             return super.save(context);
         }
 
@@ -781,15 +757,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
                     .build());
         }
 
-        // Create operations for making this the only default account
-        // Note, these are always updates because they change existing accounts
-        if (mIsDefault) {
-            index++;
-            ContentValues cv1 = new ContentValues();
-            cv1.put(AccountColumns.IS_DEFAULT, 0);
-            ops.add(ContentProviderOperation.newUpdate(CONTENT_URI).withValues(cv1).build());
-        }
-
         // Now do the Account
         ContentValues cv = null;
         if (recvIndex >= 0 || sendIndex >= 0) {
@@ -811,7 +778,7 @@ public final class Account extends EmailContent implements AccountColumns, Parce
 
         try {
             ContentProviderResult[] results =
-                context.getContentResolver().applyBatch(AUTHORITY, ops);
+                context.getContentResolver().applyBatch(EmailContent.AUTHORITY, ops);
             // If saving, set the mId's of the various saved objects
             if (recvIndex >= 0) {
                 long newId = getId(results[recvIndex].uri);
@@ -845,7 +812,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         values.put(AccountColumns.HOST_AUTH_KEY_RECV, mHostAuthKeyRecv);
         values.put(AccountColumns.HOST_AUTH_KEY_SEND, mHostAuthKeySend);
         values.put(AccountColumns.FLAGS, mFlags);
-        values.put(AccountColumns.IS_DEFAULT, mIsDefault);
         values.put(AccountColumns.COMPATIBILITY_UUID, mCompatibilityUuid);
         values.put(AccountColumns.SENDER_NAME, mSenderName);
         values.put(AccountColumns.RINGTONE_URI, mRingtoneUri);
@@ -854,8 +820,7 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         values.put(AccountColumns.SECURITY_SYNC_KEY, mSecuritySyncKey);
         values.put(AccountColumns.SIGNATURE, mSignature);
         values.put(AccountColumns.POLICY_KEY, mPolicyKey);
-        values.put(AccountColumns.NOTIFIED_MESSAGE_ID, mNotifiedMessageId);
-        values.put(AccountColumns.NOTIFIED_MESSAGE_COUNT, mNotifiedMessageCount);
+        values.put(AccountColumns.PING_DURATION, mPingDuration);
         return values;
     }
 
@@ -898,7 +863,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         dest.writeLong(mHostAuthKeyRecv);
         dest.writeLong(mHostAuthKeySend);
         dest.writeInt(mFlags);
-        dest.writeByte(mIsDefault ? (byte)1 : (byte)0);
         dest.writeString(mCompatibilityUuid);
         dest.writeString(mSenderName);
         dest.writeString(mRingtoneUri);
@@ -937,7 +901,6 @@ public final class Account extends EmailContent implements AccountColumns, Parce
         mHostAuthKeyRecv = in.readLong();
         mHostAuthKeySend = in.readLong();
         mFlags = in.readInt();
-        mIsDefault = in.readByte() == 1;
         mCompatibilityUuid = in.readString();
         mSenderName = in.readString();
         mRingtoneUri = in.readString();

@@ -18,27 +18,51 @@ package com.android.email.activity.setup;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.util.Log;
+
+import com.android.emailcommon.Logging;
+import com.android.mail.utils.LogUtils;
 
 /**
  * Superclass of all of the account setup activities; ensures that SetupData state is saved/restored
  * automatically as required
  */
-public class AccountSetupActivity extends Activity {
+public class AccountSetupActivity extends Activity implements SetupData.SetupDataContainer {
     private static final boolean DEBUG_SETUP_FLOWS = false;  // Don't check in set to true
+    protected SetupData mSetupData;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        SetupData.restore(savedInstanceState);
+        if (savedInstanceState != null) {
+            mSetupData = savedInstanceState.getParcelable(SetupData.EXTRA_SETUP_DATA);
+        } else {
+            final Bundle b = getIntent().getExtras();
+            if (b != null) {
+                mSetupData = b.getParcelable(SetupData.EXTRA_SETUP_DATA);
+            }
+        }
+        if (mSetupData == null) {
+            mSetupData = new SetupData();
+        }
+
         super.onCreate(savedInstanceState);
         if (DEBUG_SETUP_FLOWS) {
-            Log.d(getClass().getName(), SetupData.debugString());
+            LogUtils.d(Logging.LOG_TAG, "%s onCreate %s", getClass().getName(), mSetupData.debugString());
         }
     }
 
     @Override
     public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        SetupData.save(outState);
+        outState.putParcelable(SetupData.EXTRA_SETUP_DATA, mSetupData);
+    }
+
+    @Override
+    public SetupData getSetupData() {
+        return mSetupData;
+    }
+
+    @Override
+    public void setSetupData(SetupData setupData) {
+        mSetupData = setupData;
     }
 }

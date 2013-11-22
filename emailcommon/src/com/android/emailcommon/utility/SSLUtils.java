@@ -16,51 +16,143 @@
 
 package com.android.emailcommon.utility;
 
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Context;
+import android.database.Cursor;
 import android.net.SSLCertificateSocketFactory;
 import android.security.KeyChain;
 import android.security.KeyChainException;
-import android.util.Log;
 
+import com.android.emailcommon.provider.EmailContent.HostAuthColumns;
+import com.android.emailcommon.provider.HostAuth;
+import com.android.mail.utils.LogUtils;
 import com.google.common.annotations.VisibleForTesting;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.security.Principal;
 import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 
 import javax.net.ssl.KeyManager;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedKeyManager;
+import javax.net.ssl.X509TrustManager;
 
 public class SSLUtils {
-    private static SSLCertificateSocketFactory sInsecureFactory;
+    // All secure factories are the same; all insecure factories are associated with HostAuth's
     private static SSLCertificateSocketFactory sSecureFactory;
 
     private static final boolean LOG_ENABLED = false;
     private static final String TAG = "Email.Ssl";
 
     /**
+     * A trust manager specific to a particular HostAuth.  The first time a server certificate is
+     * encountered for the HostAuth, its certificate is saved; subsequent checks determine whether
+     * the PublicKey of the certificate presented matches that of the saved certificate
+     * TODO: UI to ask user about changed certificates
+     */
+    private static class SameCertificateCheckingTrustManager implements X509TrustManager {
+        private final HostAuth mHostAuth;
+        private final Context mContext;
+        // The public key associated with the HostAuth; we'll lazily initialize it
+        private PublicKey mPublicKey;
+
+        SameCertificateCheckingTrustManager(Context context, HostAuth hostAuth) {
+            mContext = context;
+            mHostAuth = hostAuth;
+            // We must load the server cert manually (the ContentCache won't handle blobs
+            Cursor c = context.getContentResolver().query(HostAuth.CONTENT_URI,
+                    new String[] {HostAuthColumns.SERVER_CERT}, HostAuth.ID + "=?",
+                    new String[] {Long.toString(hostAuth.mId)}, null);
+            if (c != null) {
+                try {
+                    if (c.moveToNext()) {
+                        mHostAuth.mServerCert = c.getBlob(0);
+                    }
+                } finally {
+                    c.close();
+                }
+            }
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType)
+                throws CertificateException {
+            // We don't check client certificates
+            throw new CertificateException("We don't check client certificates");
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType)
+                throws CertificateException {
+            if (chain.length == 0) {
+                throw new CertificateException("No certificates?");
+            } else {
+                X509Certificate serverCert = chain[0];
+                if (mHostAuth.mServerCert != null) {
+                    // Compare with the current public key
+                    if (mPublicKey == null) {
+                        ByteArrayInputStream bais = new ByteArrayInputStream(mHostAuth.mServerCert);
+                        Certificate storedCert =
+                                CertificateFactory.getInstance("X509").generateCertificate(bais);
+                        mPublicKey = storedCert.getPublicKey();
+                        try {
+                            bais.close();
+                        } catch (IOException e) {
+                            // Yeah, right.
+                        }
+                    }
+                    if (!mPublicKey.equals(serverCert.getPublicKey())) {
+                        throw new CertificateException(
+                                "PublicKey has changed since initial connection!");
+                    }
+                } else {
+                    // First time; save this away
+                    byte[] encodedCert = serverCert.getEncoded();
+                    mHostAuth.mServerCert = encodedCert;
+                    ContentValues values = new ContentValues();
+                    values.put(HostAuthColumns.SERVER_CERT, encodedCert);
+                    mContext.getContentResolver().update(
+                            ContentUris.withAppendedId(HostAuth.CONTENT_URI, mHostAuth.mId),
+                            values, null, null);
+                }
+            }
+        }
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return null;
+        }
+    }
+
+    /**
      * Returns a {@link javax.net.ssl.SSLSocketFactory}.
      * Optionally bypass all SSL certificate checks.
      *
      * @param insecure if true, bypass all SSL certificate checks
-     * @param timeout the timeout value in milliseconds or {@code 0} for an infinite timeout.
      */
-    public synchronized static SSLCertificateSocketFactory getSSLSocketFactory(
-            boolean insecure, int timeout) {
+    public synchronized static SSLCertificateSocketFactory getSSLSocketFactory(Context context,
+            HostAuth hostAuth, boolean insecure) {
         if (insecure) {
-            if (sInsecureFactory == null) {
-                sInsecureFactory = (SSLCertificateSocketFactory)
-                        SSLCertificateSocketFactory.getInsecure(timeout, null);
-            }
-            return sInsecureFactory;
+            SSLCertificateSocketFactory insecureFactory = (SSLCertificateSocketFactory)
+                    SSLCertificateSocketFactory.getInsecure(0, null);
+            insecureFactory.setTrustManagers(
+                    new TrustManager[] {
+                            new SameCertificateCheckingTrustManager(context, hostAuth)});
+            return insecureFactory;
         } else {
             if (sSecureFactory == null) {
                 sSecureFactory = (SSLCertificateSocketFactory)
-                        SSLCertificateSocketFactory.getDefault(timeout, null);
+                        SSLCertificateSocketFactory.getDefault(0, null);
             }
             return sSecureFactory;
         }
@@ -70,8 +162,9 @@ public class SSLUtils {
      * Returns a {@link org.apache.http.conn.ssl.SSLSocketFactory SSLSocketFactory} for use with the
      * Apache HTTP stack.
      */
-    public static SSLSocketFactory getHttpSocketFactory(boolean insecure, KeyManager keyManager) {
-        SSLCertificateSocketFactory underlying = getSSLSocketFactory(insecure, 0 /* no timeout */);
+    public static SSLSocketFactory getHttpSocketFactory(Context context, HostAuth hostAuth,
+            KeyManager keyManager, boolean insecure) {
+        SSLCertificateSocketFactory underlying = getSSLSocketFactory(context, hostAuth, insecure);
         if (keyManager != null) {
             underlying.setKeyManagers(new KeyManager[] { keyManager });
         }
@@ -153,7 +246,7 @@ public class SSLUtils {
         public String chooseClientAlias(String[] keyTypes, Principal[] issuers, Socket socket) {
             if (LOG_ENABLED) {
                 InetAddress address = socket.getInetAddress();
-                Log.i(TAG, "TrackingKeyManager: requesting a client cert alias for "
+                LogUtils.i(TAG, "TrackingKeyManager: requesting a client cert alias for "
                         + address.getCanonicalHostName());
             }
             mLastTimeCertRequested = System.currentTimeMillis();
@@ -163,7 +256,7 @@ public class SSLUtils {
         @Override
         public X509Certificate[] getCertificateChain(String alias) {
             if (LOG_ENABLED) {
-                Log.i(TAG, "TrackingKeyManager: returning a null cert chain");
+                LogUtils.i(TAG, "TrackingKeyManager: returning a null cert chain");
             }
             return null;
         }
@@ -171,7 +264,7 @@ public class SSLUtils {
         @Override
         public PrivateKey getPrivateKey(String alias) {
             if (LOG_ENABLED) {
-                Log.i(TAG, "TrackingKeyManager: returning a null private key");
+                LogUtils.i(TAG, "TrackingKeyManager: returning a null private key");
             }
             return null;
         }
@@ -232,9 +325,9 @@ public class SSLUtils {
         private static void logError(String alias, String type, Exception ex) {
             // Avoid logging PII when explicit logging is not on.
             if (LOG_ENABLED) {
-                Log.e(TAG, "Unable to retrieve " + type + " for [" + alias + "] due to " + ex);
+                LogUtils.e(TAG, "Unable to retrieve " + type + " for [" + alias + "] due to " + ex);
             } else {
-                Log.e(TAG, "Unable to retrieve " + type + " due to " + ex);
+                LogUtils.e(TAG, "Unable to retrieve " + type + " due to " + ex);
             }
         }
 
@@ -249,7 +342,7 @@ public class SSLUtils {
         @Override
         public String chooseClientAlias(String[] keyTypes, Principal[] issuers, Socket socket) {
             if (LOG_ENABLED) {
-                Log.i(TAG, "Requesting a client cert alias for " + Arrays.toString(keyTypes));
+                LogUtils.i(TAG, "Requesting a client cert alias for " + Arrays.toString(keyTypes));
             }
             return mClientAlias;
         }
@@ -257,7 +350,7 @@ public class SSLUtils {
         @Override
         public X509Certificate[] getCertificateChain(String alias) {
             if (LOG_ENABLED) {
-                Log.i(TAG, "Requesting a client certificate chain for alias [" + alias + "]");
+                LogUtils.i(TAG, "Requesting a client certificate chain for alias [" + alias + "]");
             }
             return mCertificateChain;
         }
@@ -265,7 +358,7 @@ public class SSLUtils {
         @Override
         public PrivateKey getPrivateKey(String alias) {
             if (LOG_ENABLED) {
-                Log.i(TAG, "Requesting a client private key for alias [" + alias + "]");
+                LogUtils.i(TAG, "Requesting a client private key for alias [" + alias + "]");
             }
             return mPrivateKey;
         }

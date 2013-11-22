@@ -18,6 +18,7 @@
 package com.android.emailcommon.service;
 
 import com.android.emailcommon.provider.HostAuth;
+import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.service.IEmailServiceCallback;
 import com.android.emailcommon.service.SearchParams;
 import android.os.Bundle;
@@ -25,21 +26,18 @@ import android.os.Bundle;
 interface IEmailService {
     Bundle validate(in HostAuth hostauth);
 
-    oneway void startSync(long mailboxId, boolean userRequest);
+    oneway void startSync(long mailboxId, boolean userRequest, int deltaMessageCount);
     oneway void stopSync(long mailboxId);
 
+    // TODO: loadMore appears to be unused; if so, delete it.
     oneway void loadMore(long messageId);
-    oneway void loadAttachment(long attachmentId, boolean background);
+    oneway void loadAttachment(IEmailServiceCallback cb, long attachmentId, boolean background);
 
     oneway void updateFolderList(long accountId);
 
     boolean createFolder(long accountId, String name);
     boolean deleteFolder(long accountId, String name);
     boolean renameFolder(long accountId, String oldName, String newName);
-
-    // Must not be oneway; unless an exception is thrown, the caller is guaranteed that the callback
-    // has been registered
-    void setCallback(IEmailServiceCallback cb);
 
     oneway void setLogging(int on);
 
@@ -51,7 +49,7 @@ interface IEmailService {
 
     // Must not be oneway; unless an exception is thrown, the caller is guaranteed that the action
     // has been completed
-    void deleteAccountPIMData(long accountId);
+    void deleteAccountPIMData(String emailAddress);
 
     int getApiLevel();
 
@@ -59,4 +57,9 @@ interface IEmailService {
     int searchMessages(long accountId, in SearchParams params, long destMailboxId);
 
     void sendMail(long accountId);
+
+    // API level 3
+    int getCapabilities(in Account acct);
+
+    void serviceUpdated(String emailAddress);
 }

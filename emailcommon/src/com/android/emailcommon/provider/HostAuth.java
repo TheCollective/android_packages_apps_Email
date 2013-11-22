@@ -34,14 +34,15 @@ import java.net.URISyntaxException;
 
 public final class HostAuth extends EmailContent implements HostAuthColumns, Parcelable {
     public static final String TABLE_NAME = "HostAuth";
-    @SuppressWarnings("hiding")
-    public static final Uri CONTENT_URI = Uri.parse(EmailContent.CONTENT_URI + "/hostauth");
-    // TODO the three following constants duplicate constants in Store.java; remove those and
-    //      just reference these.
-    public static final String SCHEME_IMAP = "imap";
-    public static final String SCHEME_POP3 = "pop3";
-    public static final String SCHEME_EAS = "eas";
-    public static final String SCHEME_SMTP = "smtp";
+    public static Uri CONTENT_URI;
+
+    public static void initHostAuth() {
+        CONTENT_URI = Uri.parse(EmailContent.CONTENT_URI + "/hostauth");
+    }
+
+    // These legacy constants should be used in code created prior to Email2
+    public static final String LEGACY_SCHEME_SMTP = "smtp";
+
     public static final String SCHEME_TRUST_ALL_CERTS = "trustallcerts";
 
     public static final int PORT_UNKNOWN = -1;
@@ -62,6 +63,8 @@ public final class HostAuth extends EmailContent implements HostAuthColumns, Par
     public String mPassword;
     public String mDomain;
     public String mClientCertAlias = null;
+    // NOTE: The server certificate is NEVER automatically retrieved from EmailProvider
+    public byte[] mServerCert = null;
 
     public static final int CONTENT_ID_COLUMN = 0;
     public static final int CONTENT_PROTOCOL_COLUMN = 1;
@@ -269,19 +272,7 @@ public final class HostAuth extends EmailContent implements HostAuthColumns, Par
         mPort = port;
         if (mPort == PORT_UNKNOWN) {
             boolean useSSL = ((mFlags & FLAG_SSL) != 0);
-            // infer port# from protocol + security
-            // SSL implies a different port - TLS runs in the "regular" port
-            // NOTE: Although the port should be setup in the various setup screens, this
-            // block cannot easily be moved because we get process URIs from other sources
-            // (e.g. for tests, provider templates and account restore) that may or may not
-            // have a port specified.
-            if (SCHEME_POP3.equals(mProtocol)) {
-                mPort = useSSL ? 995 : 110;
-            } else if (SCHEME_IMAP.equals(mProtocol)) {
-                mPort = useSSL ? 993 : 143;
-            } else if (SCHEME_EAS.equals(mProtocol)) {
-                mPort = useSSL ? 443 : 80;
-            } else if (SCHEME_SMTP.equals(mProtocol)) {
+            if (LEGACY_SCHEME_SMTP.equals(mProtocol)) {
                 mPort = useSSL ? 465 : 587;
             }
         }
@@ -289,10 +280,6 @@ public final class HostAuth extends EmailContent implements HostAuthColumns, Par
         mClientCertAlias = clientCertAlias;
     }
 
-    /** Returns {@code true} if this is an EAS connection; otherwise, {@code false}. */
-    public boolean isEasConnection() {
-        return SCHEME_EAS.equals(mProtocol);
-    }
 
     /** Convenience method to determine if SSL is used. */
     public boolean shouldUseSsl() {
@@ -368,6 +355,7 @@ public final class HostAuth extends EmailContent implements HostAuthColumns, Par
         }
         HostAuth that = (HostAuth)o;
         return mPort == that.mPort
+                && mId == that.mId
                 && mFlags == that.mFlags
                 && Utility.areStringsEqual(mProtocol, that.mProtocol)
                 && Utility.areStringsEqual(mAddress, that.mAddress)
@@ -375,6 +363,7 @@ public final class HostAuth extends EmailContent implements HostAuthColumns, Par
                 && Utility.areStringsEqual(mPassword, that.mPassword)
                 && Utility.areStringsEqual(mDomain, that.mDomain)
                 && Utility.areStringsEqual(mClientCertAlias, that.mClientCertAlias);
+                // We don't care about the server certificate for equals
     }
 
     /**
@@ -436,6 +425,11 @@ public final class HostAuth extends EmailContent implements HostAuthColumns, Par
         }
 
         setConnection(protocol, host, port, flags, clientCertAlias);
+    }
+
+    @Override
+    public String toString() {
+        return "[protocol " + mProtocol + "]";
     }
 
 }

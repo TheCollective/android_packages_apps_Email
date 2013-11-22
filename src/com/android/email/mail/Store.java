@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2008 The Android Open Source P-roject
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +18,12 @@ package com.android.email.mail;
 
 import android.content.Context;
 import android.os.Bundle;
-import android.util.Log;
 
-import com.android.email.Email;
-import com.android.email.mail.store.ExchangeStore;
+import com.android.email.R;
 import com.android.email.mail.store.ImapStore;
 import com.android.email.mail.store.Pop3Store;
+import com.android.email.mail.store.ServiceStore;
+import com.android.email.mail.transport.MailTransport;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.mail.Folder;
 import com.android.emailcommon.mail.MessagingException;
@@ -31,6 +31,7 @@ import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.provider.EmailContent;
 import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.provider.Mailbox;
+import com.android.mail.utils.LogUtils;
 import com.google.common.annotations.VisibleForTesting;
 
 import java.lang.reflect.Method;
@@ -42,32 +43,26 @@ import java.util.HashMap;
 public abstract class Store {
     /**
      * A global suggestion to Store implementors on how much of the body
-     * should be returned on FetchProfile.Item.BODY_SANE requests.
+     * should be returned on FetchProfile.Item.BODY_SANE requests. We'll use 125k now.
      */
-    public static final int FETCH_BODY_SANE_SUGGESTED_SIZE = (50 * 1024);
+    public static final int FETCH_BODY_SANE_SUGGESTED_SIZE = (125 * 1024);
 
     @VisibleForTesting
     static final HashMap<HostAuth, Store> sStores = new HashMap<HostAuth, Store>();
     protected Context mContext;
     protected Account mAccount;
-    protected Transport mTransport;
+    protected MailTransport mTransport;
     protected String mUsername;
     protected String mPassword;
 
     static final HashMap<String, Class<? extends Store>> sStoreClasses =
         new HashMap<String, Class<? extends Store>>();
 
-    static {
-        sStoreClasses.put(HostAuth.SCHEME_EAS, ExchangeStore.class);
-        sStoreClasses.put(HostAuth.SCHEME_IMAP, ImapStore.class);
-        sStoreClasses.put(HostAuth.SCHEME_POP3, Pop3Store.class);
-    }
-
     /**
      * Static named constructor.  It should be overrode by extending class.
      * Because this method will be called through reflection, it can not be protected.
      */
-    static Store newInstance(Account account, Context context) throws MessagingException {
+    static Store newInstance(Account account) throws MessagingException {
         throw new MessagingException("Store#newInstance: Unknown scheme in "
                 + account.mDisplayName);
     }
@@ -87,6 +82,10 @@ public abstract class Store {
      */
     public synchronized static Store getInstance(Account account, Context context)
             throws MessagingException {
+        if (sStores.isEmpty()) {
+            sStoreClasses.put(context.getString(R.string.protocol_pop3), Pop3Store.class);
+            sStoreClasses.put(context.getString(R.string.protocol_legacy_imap), ImapStore.class);
+        }
         HostAuth hostAuth = account.getOrCreateHostAuthRecv(context);
         // An existing account might have been deleted
         if (hostAuth == null) return null;
@@ -94,12 +93,15 @@ public abstract class Store {
         if (store == null) {
             Context appContext = context.getApplicationContext();
             Class<? extends Store> klass = sStoreClasses.get(hostAuth.mProtocol);
+            if (klass == null) {
+                klass = ServiceStore.class;
+            }
             try {
                 // invoke "newInstance" class method
                 Method m = klass.getMethod("newInstance", Account.class, Context.class);
                 store = (Store)m.invoke(null, account, appContext);
             } catch (Exception e) {
-                Log.d(Logging.LOG_TAG, String.format(
+                LogUtils.d(Logging.LOG_TAG, String.format(
                         "exception %s invoking method %s#newInstance(Account, Context) for %s",
                         e.toString(), klass.getName(), account.mDisplayName));
                 throw new MessagingException("Can't instantiate Store for " + account.mDisplayName);
@@ -124,15 +126,6 @@ public abstract class Store {
     public synchronized static Store removeInstance(Account account, Context context)
             throws MessagingException {
         return sStores.remove(HostAuth.restoreHostAuthWithId(context, account.mHostAuthKeyRecv));
-    }
-
-    /**
-     * Get class of SettingActivity for this Store class.
-     * @return Activity class that has class method actionEditIncomingSettings().
-     */
-    public Class<? extends android.app.Activity> getSettingActivityClass() {
-        // default SettingActivity class
-        return com.android.email.activity.setup.AccountSetupIncoming.class;
     }
 
     /**
@@ -204,6 +197,5 @@ public abstract class Store {
         //mailbox.mSyncTime;
         mailbox.mType = type;
         //box.mUnreadCount;
-        mailbox.mVisibleLimit = Email.VISIBLE_LIMIT_DEFAULT;
     }
 }

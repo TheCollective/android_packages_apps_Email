@@ -19,15 +19,17 @@ package com.android.email;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.text.TextUtils;
-import android.util.Log;
 
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.provider.Account;
+import com.android.mail.utils.LogUtils;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 public class Preferences {
@@ -51,12 +53,21 @@ public class Preferences {
     private static final String TRUSTED_SENDERS = "trustedSenders";
     private static final String LAST_ACCOUNT_USED = "lastAccountUsed";
     private static final String REQUIRE_MANUAL_SYNC_DIALOG_SHOWN = "requireManualSyncDialogShown";
+    private static final String CONFIRM_DELETE = "confirm_delete";
+    private static final String CONFIRM_SEND = "confirm_send";
+    @Deprecated
+    private static final String SWIPE_DELETE = "swipe_delete";
+    private static final String CONV_LIST_ICON = "conversation_list_icons";
+    @Deprecated
+    private static final String REPLY_ALL = "reply_all";
 
     public static final int AUTO_ADVANCE_NEWER = 0;
     public static final int AUTO_ADVANCE_OLDER = 1;
     public static final int AUTO_ADVANCE_MESSAGE_LIST = 2;
     // "move to older" was the behavior on older versions.
     private static final int AUTO_ADVANCE_DEFAULT = AUTO_ADVANCE_OLDER;
+    private static final boolean CONFIRM_DELETE_DEFAULT = false;
+    private static final boolean CONFIRM_SEND_DEFAULT = false;
 
     // The following constants are used as offsets into R.array.general_preference_text_zoom_size.
     public static final int TEXT_ZOOM_TINY = 0;
@@ -67,23 +78,13 @@ public class Preferences {
     // "normal" will be the default
     public static final int TEXT_ZOOM_DEFAULT = TEXT_ZOOM_NORMAL;
 
-    // Starting something new here:
-    // REPLY_ALL is saved by the framework (CheckBoxPreference's parent, Preference).
-    // i.e. android:persistent=true in general_preferences.xml
-    public static final String REPLY_ALL = "reply_all";
-    // Reply All Default - when changing this, be sure to update general_preferences.xml
-    public static final boolean REPLY_ALL_DEFAULT = false;
+    public static final String CONV_LIST_ICON_SENDER_IMAGE = "senderimage";
+    public static final String CONV_LIST_ICON_NONE = "none";
+    public static final String CONV_LIST_ICON_DEFAULT = CONV_LIST_ICON_SENDER_IMAGE;
 
     private static Preferences sPreferences;
 
     private final SharedPreferences mSharedPreferences;
-
-    /**
-     * A set of trusted senders for whom images and external resources should automatically be
-     * loaded for.
-     * Lazilly created.
-     */
-    private HashSet<String> mTrustedSenders = null;
 
     private Preferences(Context context) {
         mSharedPreferences = context.getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE);
@@ -192,6 +193,52 @@ public class Preferences {
         mSharedPreferences.edit().putInt(AUTO_ADVANCE_DIRECTION, direction).apply();
     }
 
+    /** @deprecated Only used for migration */
+    @Deprecated
+    public String getConversationListIcon() {
+        return mSharedPreferences.getString(CONV_LIST_ICON, CONV_LIST_ICON_SENDER_IMAGE);
+    }
+
+    public boolean getConfirmDelete() {
+        return mSharedPreferences.getBoolean(CONFIRM_DELETE, CONFIRM_DELETE_DEFAULT);
+    }
+
+    public void setConfirmDelete(boolean set) {
+        mSharedPreferences.edit().putBoolean(CONFIRM_DELETE, set).apply();
+    }
+
+    public boolean getConfirmSend() {
+        return mSharedPreferences.getBoolean(CONFIRM_SEND, CONFIRM_SEND_DEFAULT);
+    }
+
+    public void setConfirmSend(boolean set) {
+        mSharedPreferences.edit().putBoolean(CONFIRM_SEND, set).apply();
+    }
+
+    /** @deprecated Only used for migration */
+    @Deprecated
+    public boolean hasSwipeDelete() {
+        return mSharedPreferences.contains(SWIPE_DELETE);
+    }
+
+    /** @deprecated Only used for migration */
+    @Deprecated
+    public boolean getSwipeDelete() {
+        return mSharedPreferences.getBoolean(SWIPE_DELETE, false);
+    }
+
+    /** @deprecated Only used for migration */
+    @Deprecated
+    public boolean hasReplyAll() {
+        return mSharedPreferences.contains(REPLY_ALL);
+    }
+
+    /** @deprecated Only used for migration */
+    @Deprecated
+    public boolean getReplyAll() {
+        return mSharedPreferences.getBoolean(REPLY_ALL, false);
+    }
+
     public int getTextZoom() {
         return mSharedPreferences.getInt(TEXT_ZOOM, TEXT_ZOOM_DEFAULT);
     }
@@ -209,45 +256,15 @@ public class Preferences {
     }
 
     /**
-     * Determines whether or not a sender should be trusted and images should automatically be
-     * shown for messages by that sender.
+     * @deprecated This has been moved to {@link com.android.mail.preferences.MailPrefs}, and is only here for migration.
      */
-    public boolean shouldShowImagesFor(String email) {
-        if (mTrustedSenders == null) {
-            try {
-                mTrustedSenders = parseEmailSet(mSharedPreferences.getString(TRUSTED_SENDERS, ""));
-            } catch (JSONException e) {
-                // Something went wrong, and the data is corrupt. Just clear it to be safe.
-                Log.w(Logging.LOG_TAG, "Trusted sender set corrupted. Clearing");
-                mSharedPreferences.edit().putString(TRUSTED_SENDERS, "").apply();
-                mTrustedSenders = new HashSet<String>();
-            }
+    @Deprecated
+    public Set<String> getWhitelistedSenderAddresses() {
+        try {
+            return parseEmailSet(mSharedPreferences.getString(TRUSTED_SENDERS, ""));
+        } catch (JSONException e) {
+            return Collections.emptySet();
         }
-        return mTrustedSenders.contains(email);
-    }
-
-    /**
-     * Marks a sender as trusted so that images from that sender will automatically be shown.
-     */
-    public void setSenderAsTrusted(String email) {
-        if (!mTrustedSenders.contains(email)) {
-            mTrustedSenders.add(email);
-            mSharedPreferences
-                    .edit()
-                    .putString(TRUSTED_SENDERS, packEmailSet(mTrustedSenders))
-                    .apply();
-        }
-    }
-
-    /**
-     * Clears all trusted senders asynchronously.
-     */
-    public void clearTrustedSenders() {
-        mTrustedSenders = new HashSet<String>();
-        mSharedPreferences
-                .edit()
-                .putString(TRUSTED_SENDERS, packEmailSet(mTrustedSenders))
-                .apply();
     }
 
     HashSet<String> parseEmailSet(String serialized) throws JSONException {
@@ -292,17 +309,16 @@ public class Preferences {
      * Gets whether the require manual sync dialog has been shown for the specified account.
      * It should only be shown once per account.
      */
-    public boolean getHasShownRequireManualSync(Context context, Account account) {
-        return getBoolean(context, account.getEmailAddress(), REQUIRE_MANUAL_SYNC_DIALOG_SHOWN,
-                false);
+    public boolean getHasShownRequireManualSync(Account account) {
+        return getBoolean(account.getEmailAddress(), REQUIRE_MANUAL_SYNC_DIALOG_SHOWN, false);
     }
 
     /**
      * Sets whether the require manual sync dialog has been shown for the specified account.
      * It should only be shown once per account.
      */
-    public void setHasShownRequireManualSync(Context context, Account account, boolean value) {
-        setBoolean(context, account.getEmailAddress(), REQUIRE_MANUAL_SYNC_DIALOG_SHOWN, value);
+    public void setHasShownRequireManualSync(Account account, boolean value) {
+        setBoolean(account.getEmailAddress(), REQUIRE_MANUAL_SYNC_DIALOG_SHOWN, value);
     }
 
 
@@ -313,7 +329,7 @@ public class Preferences {
      */
     public boolean shouldShowRequireManualSync(Context context, Account account) {
         return Account.isAutomaticSyncDisabledByRoaming(context, account.mId)
-                && !getHasShownRequireManualSync(context, account);
+                && !getHasShownRequireManualSync(account);
     }
 
     public void clear() {
@@ -323,7 +339,7 @@ public class Preferences {
     public void dump() {
         if (Logging.LOGD) {
             for (String key : mSharedPreferences.getAll().keySet()) {
-                Log.v(Logging.LOG_TAG, key + " = " + mSharedPreferences.getAll().get(key));
+                LogUtils.v(Logging.LOG_TAG, key + " = " + mSharedPreferences.getAll().get(key));
             }
         }
     }
@@ -331,21 +347,21 @@ public class Preferences {
     /**
      * Utility method for setting a boolean value on a per-account preference.
      */
-    private void setBoolean(Context context, String account, String key, Boolean value) {
+    private void setBoolean(String account, String key, Boolean value) {
         mSharedPreferences.edit().putBoolean(makeKey(account, key), value).apply();
     }
 
     /**
      * Utility method for getting a boolean value from a per-account preference.
      */
-    private boolean getBoolean(Context context, String account, String key, boolean def) {
+    private boolean getBoolean(String account, String key, boolean def) {
         return mSharedPreferences.getBoolean(makeKey(account, key), def);
     }
 
     /**
      * Utility method for creating a per account preference key.
      */
-    private String makeKey(String account, String key) {
+    private static String makeKey(String account, String key) {
         return account != null ? account + "-" + key : key;
     }
 }

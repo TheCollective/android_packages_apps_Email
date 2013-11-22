@@ -22,18 +22,16 @@ import android.os.Bundle;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Base64;
-import android.util.Log;
 
 import com.android.email.LegacyConversions;
 import com.android.email.Preferences;
-import com.android.email.VendorPolicyLoader;
 import com.android.email.mail.Store;
-import com.android.email.mail.Transport;
 import com.android.email.mail.store.imap.ImapConstants;
 import com.android.email.mail.store.imap.ImapResponse;
 import com.android.email.mail.store.imap.ImapString;
 import com.android.email.mail.transport.MailTransport;
 import com.android.emailcommon.Logging;
+import com.android.emailcommon.VendorPolicyLoader;
 import com.android.emailcommon.internet.MimeMessage;
 import com.android.emailcommon.mail.AuthenticationFailedException;
 import com.android.emailcommon.mail.Flag;
@@ -45,6 +43,7 @@ import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.service.EmailServiceProxy;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.utils.LogUtils;
 import com.beetstra.jutf7.CharsetProvider;
 import com.google.common.annotations.VisibleForTesting;
 
@@ -106,29 +105,10 @@ public class ImapStore extends Store {
         mAccount = account;
 
         HostAuth recvAuth = account.getOrCreateHostAuthRecv(context);
-        if (recvAuth == null || !HostAuth.SCHEME_IMAP.equalsIgnoreCase(recvAuth.mProtocol)) {
-            throw new MessagingException("Unsupported protocol");
+        if (recvAuth == null) {
+            throw new MessagingException("No HostAuth in ImapStore?");
         }
-        // defaults, which can be changed by security modifiers
-        int connectionSecurity = Transport.CONNECTION_SECURITY_NONE;
-        int defaultPort = 143;
-
-        // check for security flags and apply changes
-        if ((recvAuth.mFlags & HostAuth.FLAG_SSL) != 0) {
-            connectionSecurity = Transport.CONNECTION_SECURITY_SSL;
-            defaultPort = 993;
-        } else if ((recvAuth.mFlags & HostAuth.FLAG_TLS) != 0) {
-            connectionSecurity = Transport.CONNECTION_SECURITY_TLS;
-        }
-        boolean trustCertificates = ((recvAuth.mFlags & HostAuth.FLAG_TRUST_ALL) != 0);
-        int port = defaultPort;
-        if (recvAuth.mPort != HostAuth.PORT_UNKNOWN) {
-            port = recvAuth.mPort;
-        }
-        mTransport = new MailTransport("IMAP");
-        mTransport.setHost(recvAuth.mAddress);
-        mTransport.setPort(port);
-        mTransport.setSecurity(connectionSecurity, trustCertificates);
+        mTransport = new MailTransport(context, "IMAP", recvAuth);
 
         String[] userInfo = recvAuth.getLogin();
         if (userInfo != null) {
@@ -153,7 +133,7 @@ public class ImapStore extends Store {
      * @param testTransport The Transport to inject and use for all future communication.
      */
     @VisibleForTesting
-    void setTransportForTest(Transport testTransport) {
+    void setTransportForTest(MailTransport testTransport) {
         mTransport = testTransport;
     }
 
@@ -181,8 +161,8 @@ public class ImapStore extends Store {
      * @param capabilities a list of the capabilities from the server
      * @return a String for use in an IMAP ID message.
      */
-    @VisibleForTesting
-    static String getImapId(Context context, String userName, String host, String capabilities) {
+    public static String getImapId(Context context, String userName, String host,
+            String capabilities) {
         // The first section is global to all IMAP connections, and generates the fixed
         // values in any IMAP ID message
         synchronized (ImapStore.class) {
@@ -223,7 +203,7 @@ public class ImapStore extends Store {
             id.append(hexUid);
             id.append('\"');
         } catch (NoSuchAlgorithmException e) {
-            Log.d(Logging.LOG_TAG, "couldn't obtain SHA-1 hash for device UID");
+            LogUtils.d(Logging.LOG_TAG, "couldn't obtain SHA-1 hash for device UID");
         }
         return id.toString();
     }
@@ -349,11 +329,14 @@ public class ImapStore extends Store {
      * @param mailboxPath The path of the mailbox to add
      * @param delimiter A path delimiter. May be {@code null} if there is no delimiter.
      * @param selectable If {@code true}, the mailbox can be selected and used to store messages.
+     * @param mailbox If not null, mailbox is used instead of querying for the Mailbox.
      */
     private ImapFolder addMailbox(Context context, long accountId, String mailboxPath,
-            char delimiter, boolean selectable) {
+            char delimiter, boolean selectable, Mailbox mailbox) {
         ImapFolder folder = (ImapFolder) getFolder(mailboxPath);
-        Mailbox mailbox = Mailbox.getMailboxForPath(context, accountId, mailboxPath);
+        if (mailbox == null) {
+            mailbox = Mailbox.getMailboxForPath(context, accountId, mailboxPath);
+        }
         if (mailbox.isSaved()) {
             // existing mailbox
             // mailbox retrieved from database; save hash _before_ updating fields
@@ -384,6 +367,9 @@ public class ImapStore extends Store {
 
     @Override
     public Folder[] updateFolders() throws MessagingException {
+        // TODO: There is nothing that ever closes this connection. Trouble is, it's not exactly
+        // clear when we should close it, we'd like to keep it open until we're really done
+        // using it.
         ImapConnection connection = getConnection();
         try {
             HashMap<String, ImapFolder> mailboxes = new HashMap<String, ImapFolder>();
@@ -403,6 +389,7 @@ public class ImapStore extends Store {
                     if (encodedFolder.isEmpty()) continue;
 
                     String folderName = decodeFolderName(encodedFolder.getString(), mPathPrefix);
+
                     if (ImapConstants.INBOX.equalsIgnoreCase(folderName)) continue;
 
                     // Parse attributes.
@@ -413,14 +400,19 @@ public class ImapStore extends Store {
                     if (!TextUtils.isEmpty(delimiter)) {
                         delimiterChar = delimiter.charAt(0);
                     }
-                    ImapFolder folder =
-                        addMailbox(mContext, mAccount.mId, folderName, delimiterChar, selectable);
+                    ImapFolder folder = addMailbox(
+                            mContext, mAccount.mId, folderName, delimiterChar, selectable, null);
                     mailboxes.put(folderName, folder);
                 }
             }
-            Folder newFolder =
-                addMailbox(mContext, mAccount.mId, ImapConstants.INBOX, '\0', true /*selectable*/);
-            mailboxes.put(ImapConstants.INBOX, (ImapFolder)newFolder);
+
+            // In order to properly map INBOX -> Inbox, handle it as a special case.
+            final Mailbox inbox =
+                    Mailbox.restoreMailboxOfType(mContext, mAccount.mId, Mailbox.TYPE_INBOX);
+            final ImapFolder newFolder = addMailbox(
+                    mContext, mAccount.mId, inbox.mServerId, '\0', true /*selectable*/, inbox);
+            mailboxes.put(ImapConstants.INBOX, newFolder);
+
             createHierarchy(mailboxes);
             saveMailboxList(mContext, mailboxes);
             return mailboxes.values().toArray(new Folder[] {});
@@ -482,7 +474,7 @@ public class ImapStore extends Store {
     }
 
     /** Returns a clone of the transport associated with this store. */
-    Transport cloneTransport() {
+    MailTransport cloneTransport() {
         return mTransport.clone();
     }
 

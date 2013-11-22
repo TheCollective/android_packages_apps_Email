@@ -18,10 +18,9 @@ package com.android.email.mail.store;
 
 import android.content.Context;
 import android.text.TextUtils;
+import android.text.format.DateUtils;
 import android.util.Base64DataException;
-import android.util.Log;
 
-import com.android.email.Email;
 import com.android.email.mail.store.ImapStore.ImapException;
 import com.android.email.mail.store.ImapStore.ImapMessage;
 import com.android.email.mail.store.imap.ImapConstants;
@@ -30,8 +29,7 @@ import com.android.email.mail.store.imap.ImapList;
 import com.android.email.mail.store.imap.ImapResponse;
 import com.android.email.mail.store.imap.ImapString;
 import com.android.email.mail.store.imap.ImapUtility;
-import com.android.email.mail.transport.CountingOutputStream;
-import com.android.email.mail.transport.EOLConvertingOutputStream;
+import com.android.email2.ui.MailActivityEmail;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.internet.BinaryTempFileBody;
 import com.android.emailcommon.internet.MimeBodyPart;
@@ -48,12 +46,16 @@ import com.android.emailcommon.mail.MessagingException;
 import com.android.emailcommon.mail.Part;
 import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.service.SearchParams;
+import com.android.emailcommon.utility.CountingOutputStream;
+import com.android.emailcommon.utility.EOLConvertingOutputStream;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.utils.LogUtils;
 import com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -61,6 +63,7 @@ import java.util.Locale;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.TimeZone;
 
 class ImapFolder extends Folder {
     private final static Flag[] PERMANENT_FLAGS =
@@ -322,7 +325,7 @@ class ImapFolder extends Folder {
                     }
                 } catch (MessagingException e) {
                     // Log, but, don't abort; failures here don't need to be propagated
-                    Log.d(Logging.LOG_TAG, "Failed to find message", e);
+                    LogUtils.d(Logging.LOG_TAG, "Failed to find message", e);
                 } finally {
                     newFolder.close(false);
                 }
@@ -388,17 +391,40 @@ class ImapFolder extends Folder {
         return uids.toArray(Utility.EMPTY_STRINGS);
     }
 
-    @VisibleForTesting
     String[] searchForUids(String searchCriteria) throws MessagingException {
+        return searchForUids(searchCriteria, true);
+    }
+
+    /**
+     * I'm not a fan of having a parameter that determines whether to throw exceptions or
+     * consume them, but getMessage() for a date range needs to differentiate between
+     * a failure and just a legitimate empty result.
+     * See b/11183568.
+     * TODO:
+     * Either figure out how to make getMessage() with a date range work without this
+     * exception information, or make all users of searchForUids() handle the ImapException.
+     * It's too late in the release cycle to add this risk right now.
+     */
+    @VisibleForTesting
+    String[] searchForUids(String searchCriteria, boolean swallowException)
+            throws MessagingException {
         checkOpen();
         try {
             try {
-                String command = ImapConstants.UID_SEARCH + " " + searchCriteria;
-                return getSearchUids(mConnection.executeSimpleCommand(command));
-            } catch (ImapException e) {
-                Log.d(Logging.LOG_TAG, "ImapException in search: " + searchCriteria);
-                return Utility.EMPTY_STRINGS; // not found;
+                final String command = ImapConstants.UID_SEARCH + " " + searchCriteria;
+                final String[] result = getSearchUids(mConnection.executeSimpleCommand(command));
+                LogUtils.d(Logging.LOG_TAG, "searchForUids '" + searchCriteria + "' results: " +
+                        result.length);
+                return result;
+            } catch (ImapException me) {
+                LogUtils.d(Logging.LOG_TAG, me, "ImapException in search: " + searchCriteria);
+                if (swallowException) {
+                    return Utility.EMPTY_STRINGS; // Not found
+                } else {
+                    throw me;
+                }
             } catch (IOException ioe) {
+                LogUtils.d(Logging.LOG_TAG, ioe, "IOException in search: " + searchCriteria);
                 throw ioExceptionHandler(mConnection, ioe);
             }
         } finally {
@@ -481,8 +507,73 @@ class ImapFolder extends Folder {
         if (start < 1 || end < 1 || end < start) {
             throw new MessagingException(String.format("Invalid range: %d %d", start, end));
         }
+        LogUtils.d(Logging.LOG_TAG, "getMessages number " + start + " - " + end);
         return getMessagesInternal(
                 searchForUids(String.format(Locale.US, "%d:%d NOT DELETED", start, end)), listener);
+    }
+
+    private String generateDateRangeCommand(final long startDate, final long endDate,
+            boolean useQuotes)
+            throws MessagingException {
+        // Dates must be formatted like: 7-Feb-1994. Time info within a date is not
+        // universally supported.
+        // XXX can I limit the maximum number of results?
+        final SimpleDateFormat formatter = new SimpleDateFormat("dd-LLL-yyyy", Locale.US);
+        formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+        final String sinceDateStr = formatter.format(endDate);
+
+        StringBuilder queryParam = new StringBuilder();
+        queryParam.append( "1:* ");
+        // If the caller requests a startDate of zero, then ignore the BEFORE parameter.
+        // This makes sure that we can always query for the newest messages, even if our
+        // time is different from the imap server's time.
+        if (startDate != 0) {
+            final String beforeDateStr = formatter.format(startDate);
+            if (startDate < endDate) {
+                throw new MessagingException(String.format("Invalid date range: %s - %s",
+                        sinceDateStr, beforeDateStr));
+            }
+            queryParam.append("BEFORE ");
+            if (useQuotes) queryParam.append('\"');
+            queryParam.append(beforeDateStr);
+            if (useQuotes) queryParam.append('\"');
+            queryParam.append(" ");
+        }
+        queryParam.append("SINCE ");
+        if (useQuotes) queryParam.append('\"');
+        queryParam.append(sinceDateStr);
+        if (useQuotes) queryParam.append('\"');
+
+        return queryParam.toString();
+    }
+
+    @Override
+    @VisibleForTesting
+    public Message[] getMessages(long startDate, long endDate, MessageRetrievalListener listener)
+            throws MessagingException {
+        String [] uids = null;
+        String command = generateDateRangeCommand(startDate, endDate, false);
+        LogUtils.d(Logging.LOG_TAG, "getMessages dateRange " + command.toString());
+
+        try {
+            uids = searchForUids(command.toString(), false);
+        } catch (ImapException e) {
+            // TODO: This is a last minute hack to make certain servers work. Some servers
+            // demand that the date in the date range be surrounded by double quotes, other
+            // servers won't accept that. So if we can an ImapException using one method,
+            // try the other.
+            // See b/11183568
+            LogUtils.d(Logging.LOG_TAG, e, "query failed %s, trying alternate",
+                    command.toString());
+            command = generateDateRangeCommand(startDate, endDate, true);
+            try {
+                uids = searchForUids(command, true);
+            } catch (ImapException e2) {
+                LogUtils.w(Logging.LOG_TAG, e2, "query failed %s, fatal", command);
+                uids = null;
+            }
+        }
+        return getMessagesInternal(uids, listener);
     }
 
     @Override
@@ -514,7 +605,7 @@ class ImapFolder extends Folder {
         try {
             fetchInternal(messages, fp, listener);
         } catch (RuntimeException e) { // Probably a parser error.
-            Log.w(Logging.LOG_TAG, "Exception detected: " + e.getMessage());
+            LogUtils.w(Logging.LOG_TAG, "Exception detected: " + e.getMessage());
             if (mConnection != null) {
                 mConnection.logLastDiscourse();
             }
@@ -582,7 +673,6 @@ class ImapFolder extends Folder {
                     Utility.combine(fetchFields.toArray(new String[fetchFields.size()]), ' ')
                     ), false);
             ImapResponse response;
-            int messageNumber = 0;
             do {
                 response = null;
                 try {
@@ -635,7 +725,7 @@ class ImapFolder extends Folder {
                                 parseBodyStructure(bs, message, ImapConstants.TEXT);
                             } catch (MessagingException e) {
                                 if (Logging.LOGD) {
-                                    Log.v(Logging.LOG_TAG, "Error handling message", e);
+                                    LogUtils.v(Logging.LOG_TAG, "Error handling message", e);
                                 }
                                 message.setBody(null);
                             }
@@ -650,19 +740,35 @@ class ImapFolder extends Folder {
                         InputStream bodyStream = body.getAsStream();
                         message.parse(bodyStream);
                     }
-                    if (fetchPart != null && fetchPart.getSize() > 0) {
+                    if (fetchPart != null) {
                         InputStream bodyStream =
                                 fetchList.getKeyedStringOrEmpty("BODY[", true).getAsStream();
-                        String contentType = fetchPart.getContentType();
-                        String contentTransferEncoding = fetchPart.getHeader(
-                                MimeHeader.HEADER_CONTENT_TRANSFER_ENCODING)[0];
+                        String encodings[] = fetchPart.getHeader(
+                                MimeHeader.HEADER_CONTENT_TRANSFER_ENCODING);
 
-                        // TODO Don't create 2 temp files.
-                        // decodeBody creates BinaryTempFileBody, but we could avoid this
-                        // if we implement ImapStringBody.
-                        // (We'll need to share a temp file.  Protect it with a ref-count.)
-                        fetchPart.setBody(decodeBody(bodyStream, contentTransferEncoding,
-                                fetchPart.getSize(), listener));
+                        String contentTransferEncoding = null;
+                        if (encodings != null && encodings.length > 0) {
+                            contentTransferEncoding = encodings[0];
+                        } else {
+                            // According to http://tools.ietf.org/html/rfc2045#section-6.1
+                            // "7bit" is the default.
+                            contentTransferEncoding = "7bit";
+                        }
+
+                        try {
+                            // TODO Don't create 2 temp files.
+                            // decodeBody creates BinaryTempFileBody, but we could avoid this
+                            // if we implement ImapStringBody.
+                            // (We'll need to share a temp file.  Protect it with a ref-count.)
+                            fetchPart.setBody(decodeBody(bodyStream, contentTransferEncoding,
+                                    fetchPart.getSize(), listener));
+                        } catch(Exception e) {
+                            // TODO: Figure out what kinds of exceptions might actually be thrown
+                            // from here. This blanket catch-all is because we're not sure what to
+                            // do if we don't have a contentTransferEncoding, and we don't have
+                            // time to figure out what exceptions might be thrown.
+                            LogUtils.e(Logging.LOG_TAG, "Error fetching body %s", e);
+                        }
                     }
 
                     if (listener != null) {
@@ -681,7 +787,7 @@ class ImapFolder extends Folder {
      * Removes any content transfer encoding from the stream and returns a Body.
      * This code is taken/condensed from MimeUtility.decodeBody
      */
-    private Body decodeBody(InputStream in, String contentTransferEncoding, int size,
+    private static Body decodeBody(InputStream in, String contentTransferEncoding, int size,
             MessageRetrievalListener listener) throws IOException {
         // Get a properly wrapped input stream
         in = MimeUtility.getInputStreamForContentTransferEncoding(in, contentTransferEncoding);
@@ -695,11 +801,16 @@ class ImapFolder extends Folder {
                 out.write(buffer, 0, n);
                 count += n;
                 if (listener != null) {
-                    listener.loadAttachmentProgress(count * 100 / size);
+                    if (size == 0) {
+                        // We don't know how big the file is, so just fake it.
+                        listener.loadAttachmentProgress((int)Math.ceil(100 * (1-1.0/count)));
+                    } else {
+                        listener.loadAttachmentProgress(count * 100 / size);
+                    }
                 }
             }
         } catch (Base64DataException bde) {
-            String warning = "\n\n" + Email.getMessageDecodeErrorString();
+            String warning = "\n\n" + MailActivityEmail.getMessageDecodeErrorString();
             out.write(warning.getBytes());
         } finally {
             out.close();
@@ -1114,8 +1225,8 @@ class ImapFolder extends Folder {
     }
 
     private MessagingException ioExceptionHandler(ImapConnection connection, IOException ioe) {
-        if (Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "IO Exception detected: ", ioe);
+        if (MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "IO Exception detected: ", ioe);
         }
         connection.close();
         if (connection == mConnection) {

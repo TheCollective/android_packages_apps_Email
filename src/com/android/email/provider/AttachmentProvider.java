@@ -16,14 +16,6 @@
 
 package com.android.email.provider;
 
-import com.android.emailcommon.Logging;
-import com.android.emailcommon.internet.MimeUtility;
-import com.android.emailcommon.provider.EmailContent;
-import com.android.emailcommon.provider.EmailContent.Attachment;
-import com.android.emailcommon.provider.EmailContent.AttachmentColumns;
-import com.android.emailcommon.utility.AttachmentUtilities;
-import com.android.emailcommon.utility.AttachmentUtilities.Columns;
-
 import android.content.ContentProvider;
 import android.content.ContentUris;
 import android.content.ContentValues;
@@ -36,7 +28,16 @@ import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.ParcelFileDescriptor;
-import android.util.Log;
+
+import com.android.emailcommon.Logging;
+import com.android.emailcommon.internet.MimeUtility;
+import com.android.emailcommon.provider.EmailContent;
+import com.android.emailcommon.provider.EmailContent.Attachment;
+import com.android.emailcommon.provider.EmailContent.AttachmentColumns;
+import com.android.emailcommon.utility.AttachmentUtilities;
+import com.android.emailcommon.utility.AttachmentUtilities.Columns;
+import com.android.mail.utils.LogUtils;
+import com.android.mail.utils.MatrixCursorWithCachedColumns;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -49,10 +50,10 @@ import java.util.List;
  * A simple ContentProvider that allows file access to Email's attachments.
  *
  * The URI scheme is as follows.  For raw file access:
- *   content://com.android.email.attachmentprovider/acct#/attach#/RAW
+ *   content://com.android.mail.attachmentprovider/acct#/attach#/RAW
  *
  * And for access to thumbnails:
- *   content://com.android.email.attachmentprovider/acct#/attach#/THUMBNAIL/width#/height#
+ *   content://com.android.mail.attachmentprovider/acct#/attach#/THUMBNAIL/width#/height#
  *
  * The on-disk (storage) schema is as follows.
  *
@@ -79,11 +80,14 @@ public class AttachmentProvider extends ContentProvider {
          * We use the cache dir as a temporary directory (since Android doesn't give us one) so
          * on startup we'll clean up any .tmp files from the last run.
          */
-        File[] files = getContext().getCacheDir().listFiles();
-        for (File file : files) {
-            String filename = file.getName();
-            if (filename.endsWith(".tmp") || filename.startsWith("thmb_")) {
-                file.delete();
+
+        final File[] files = getContext().getCacheDir().listFiles();
+        if (files != null) {
+            for (File file : files) {
+                final String filename = file.getName();
+                if (filename.endsWith(".tmp") || filename.startsWith("thmb_")) {
+                    file.delete();
+                }
             }
         }
         return true;
@@ -142,7 +146,7 @@ public class AttachmentProvider extends ContentProvider {
         // based on signature only
         if (mode.equals("w")) {
             Context context = getContext();
-            if (context.checkCallingPermission(EmailContent.PROVIDER_PERMISSION)
+            if (context.checkCallingOrSelfPermission(EmailContent.PROVIDER_PERMISSION)
                     != PackageManager.PERMISSION_GRANTED) {
                 throw new FileNotFoundException();
             }
@@ -201,11 +205,11 @@ public class AttachmentProvider extends ContentProvider {
                         out.close();
                         in.close();
                     } catch (IOException ioe) {
-                        Log.d(Logging.LOG_TAG, "openFile/thumbnail failed with " +
+                        LogUtils.d(Logging.LOG_TAG, "openFile/thumbnail failed with " +
                                 ioe.getMessage());
                         return null;
                     } catch (OutOfMemoryError oome) {
-                        Log.d(Logging.LOG_TAG, "openFile/thumbnail failed with " +
+                        LogUtils.d(Logging.LOG_TAG, "openFile/thumbnail failed with " +
                                 oome.getMessage());
                         return null;
                     }
@@ -275,7 +279,7 @@ public class AttachmentProvider extends ContentProvider {
                 c.close();
             }
 
-            MatrixCursor ret = new MatrixCursor(projection);
+            MatrixCursor ret = new MatrixCursorWithCachedColumns(projection);
             Object[] values = new Object[projection.length];
             for (int i = 0, count = projection.length; i < count; i++) {
                 String column = projection[i];
@@ -304,22 +308,22 @@ public class AttachmentProvider extends ContentProvider {
         return 0;
     }
 
-    private Bitmap createThumbnail(String type, InputStream data) {
+    private static Bitmap createThumbnail(String type, InputStream data) {
         if(MimeUtility.mimeTypeMatches(type, "image/*")) {
             return createImageThumbnail(data);
         }
         return null;
     }
 
-    private Bitmap createImageThumbnail(InputStream data) {
+    private static Bitmap createImageThumbnail(InputStream data) {
         try {
             Bitmap bitmap = BitmapFactory.decodeStream(data);
             return bitmap;
         } catch (OutOfMemoryError oome) {
-            Log.d(Logging.LOG_TAG, "createImageThumbnail failed with " + oome.getMessage());
+            LogUtils.d(Logging.LOG_TAG, "createImageThumbnail failed with " + oome.getMessage());
             return null;
         } catch (Exception e) {
-            Log.d(Logging.LOG_TAG, "createImageThumbnail failed with " + e.getMessage());
+            LogUtils.d(Logging.LOG_TAG, "createImageThumbnail failed with " + e.getMessage());
             return null;
         }
     }

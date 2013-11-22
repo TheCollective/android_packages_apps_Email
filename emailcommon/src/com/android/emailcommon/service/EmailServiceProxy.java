@@ -21,14 +21,15 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
-import android.util.Log;
 
 import com.android.emailcommon.Api;
 import com.android.emailcommon.Device;
 import com.android.emailcommon.TempDirectory;
 import com.android.emailcommon.mail.MessagingException;
+import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.provider.Policy;
+import com.android.mail.utils.LogUtils;
 
 import java.io.IOException;
 
@@ -50,10 +51,6 @@ import java.io.IOException;
 public class EmailServiceProxy extends ServiceProxy implements IEmailService {
     private static final String TAG = "EmailServiceProxy";
 
-    // Private intent that will be used to connect to an independent Exchange service
-    public static final String EXCHANGE_INTENT = "com.android.email.EXCHANGE_INTENT";
-    public static final String IMAP_INTENT = "com.android.email.IMAP_INTENT";
-
     public static final String AUTO_DISCOVER_BUNDLE_ERROR_CODE = "autodiscover_error_code";
     public static final String AUTO_DISCOVER_BUNDLE_HOST_AUTH = "autodiscover_host_auth";
 
@@ -62,8 +59,9 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
     public static final String VALIDATE_BUNDLE_ERROR_MESSAGE = "validate_error_message";
     public static final String VALIDATE_BUNDLE_UNSUPPORTED_POLICIES =
         "validate_unsupported_policies";
+    public static final String VALIDATE_BUNDLE_PROTOCOL_VERSION = "validate_protocol_version";
+    public static final String VALIDATE_BUNDLE_REDIRECT_ADDRESS = "validate_redirect_address";
 
-    private final IEmailServiceCallback mCallback;
     private Object mReturn = null;
     private IEmailService mService;
     private final boolean isRemote;
@@ -79,36 +77,20 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
 
     // The first two constructors are used with local services that can be referenced by class
     public EmailServiceProxy(Context _context, Class<?> _class) {
-        this(_context, _class, null);
-    }
-
-    public EmailServiceProxy(Context _context, Class<?> _class, IEmailServiceCallback _callback) {
         super(_context, new Intent(_context, _class));
-        mCallback = _callback;
+        TempDirectory.setTempDirectory(_context);
         isRemote = false;
     }
 
     // The following two constructors are used with remote services that must be referenced by
     // a known action or by a prebuilt intent
-    public EmailServiceProxy(Context _context, Intent _intent, IEmailServiceCallback _callback) {
+    public EmailServiceProxy(Context _context, Intent _intent) {
         super(_context, _intent);
         try {
             Device.getDeviceId(_context);
-            TempDirectory.setTempDirectory(_context);
         } catch (IOException e) {
         }
-        mCallback = _callback;
-        isRemote = true;
-    }
-
-    public EmailServiceProxy(Context _context, String _action, IEmailServiceCallback _callback) {
-        super(_context, new Intent(_action));
-        try {
-            Device.getDeviceId(_context);
-            TempDirectory.setTempDirectory(_context);
-        } catch (IOException e) {
-        }
-        mCallback = _callback;
+        TempDirectory.setTempDirectory(_context);
         isRemote = true;
     }
 
@@ -132,24 +114,25 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
      * loading has started and stopped and SHOULD send callbacks with progress information if
      * possible.
      *
+     * @param cb The {@link IEmailServiceCallback} to use for this operation.
      * @param attachmentId the id of the attachment record
      * @param background whether or not this request corresponds to a background action (i.e.
      * prefetch) vs a foreground action (user request)
      */
     @Override
-    public void loadAttachment(final long attachmentId, final boolean background)
+    public void loadAttachment(final IEmailServiceCallback cb, final long attachmentId,
+            final boolean background)
             throws RemoteException {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
                 try {
-                    if (mCallback != null) mService.setCallback(mCallback);
-                    mService.loadAttachment(attachmentId, background);
+                    mService.loadAttachment(cb, attachmentId, background);
                 } catch (RemoteException e) {
                     try {
                         // Try to send a callback (if set)
-                        if (mCallback != null) {
-                            mCallback.loadAttachmentStatus(-1, attachmentId,
+                        if (cb != null) {
+                            cb.loadAttachmentStatus(-1, attachmentId,
                                     EmailServiceStatus.REMOTE_EXCEPTION, 0);
                         }
                     } catch (RemoteException e1) {
@@ -163,17 +146,20 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
      * Request the sync of a mailbox; the service MUST send the syncMailboxStatus callback
      * indicating "starting" and "finished" (or error), regardless of whether the mailbox is
      * actually syncable.
+     * TODO: Remove this from IEmailService in favor of ContentResolver.requestSync.
      *
      * @param mailboxId the id of the mailbox record
      * @param userRequest whether or not the user specifically asked for the sync
+     * @param deltaMessageCount amount by which to change the number of messages synced.
      */
+    @Deprecated
     @Override
-    public void startSync(final long mailboxId, final boolean userRequest) throws RemoteException {
+    public void startSync(final long mailboxId, final boolean userRequest,
+            final int deltaMessageCount) throws RemoteException {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                if (mCallback != null) mService.setCallback(mCallback);
-                mService.startSync(mailboxId, userRequest);
+                mService.startSync(mailboxId, userRequest, deltaMessageCount);
             }
         }, "startSync");
     }
@@ -184,14 +170,12 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
      * the sync was started via the startSync service call.
      *
      * @param mailboxId the id of the mailbox record
-     * @param userRequest whether or not the user specifically asked for the sync
      */
     @Override
     public void stopSync(final long mailboxId) throws RemoteException {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                if (mCallback != null) mService.setCallback(mCallback);
                 mService.stopSync(mailboxId);
             }
         }, "stopSync");
@@ -212,7 +196,6 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException{
-                if (mCallback != null) mService.setCallback(mCallback);
                 mReturn = mService.validate(hostAuth);
             }
         }, "validate");
@@ -224,7 +207,7 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         } else {
             Bundle bundle = (Bundle) mReturn;
             bundle.setClassLoader(Policy.class.getClassLoader());
-            Log.v(TAG, "validate returns " + bundle.getInt(VALIDATE_BUNDLE_RESULT_CODE));
+            LogUtils.v(TAG, "validate returns " + bundle.getInt(VALIDATE_BUNDLE_RESULT_CODE));
             return bundle;
         }
     }
@@ -245,7 +228,6 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException{
-                if (mCallback != null) mService.setCallback(mCallback);
                 mReturn = mService.autoDiscover(userName, password);
             }
         }, "autoDiscover");
@@ -255,7 +237,8 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         } else {
             Bundle bundle = (Bundle) mReturn;
             bundle.setClassLoader(HostAuth.class.getClassLoader());
-            Log.v(TAG, "autoDiscover returns " + bundle.getInt(AUTO_DISCOVER_BUNDLE_ERROR_CODE));
+            LogUtils.v(TAG, "autoDiscover returns "
+                    + bundle.getInt(AUTO_DISCOVER_BUNDLE_ERROR_CODE));
             return bundle;
         }
     }
@@ -264,14 +247,13 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
      * Request that the service reload the folder list for the specified account. The service
      * MUST use the syncMailboxListStatus callback to indicate "starting" and "finished"
      *
-     * @param accoundId the id of the account whose folder list is to be updated
+     * @param accountId the id of the account whose folder list is to be updated
      */
     @Override
     public void updateFolderList(final long accountId) throws RemoteException {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                if (mCallback != null) mService.setCallback(mCallback);
                 mService.updateFolderList(accountId);
             }
         }, "updateFolderList");
@@ -288,26 +270,9 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                if (mCallback != null) mService.setCallback(mCallback);
                 mService.setLogging(flags);
             }
         }, "setLogging");
-    }
-
-    /**
-     * Set the global callback object to be used by the service; the service MUST always use the
-     * most recently set callback object
-     *
-     * @param cb a callback object through which all service callbacks are executed
-     */
-    @Override
-    public void setCallback(final IEmailServiceCallback cb) throws RemoteException {
-        setTask(new ProxyTask() {
-            @Override
-            public void run() throws RemoteException {
-                mService.setCallback(cb);
-            }
-        }, "setCallback");
     }
 
     /**
@@ -339,7 +304,6 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                if (mCallback != null) mService.setCallback(mCallback);
                 mService.sendMeetingResponse(messageId, response);
             }
         }, "sendMeetingResponse");
@@ -355,7 +319,6 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                if (mCallback != null) mService.setCallback(mCallback);
                 mService.loadMore(messageId);
             }
         }, "startSync");
@@ -402,21 +365,19 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
      * service or its sync adapters and 3) not stored in the EmailProvider database (e.g. contact
      * and calendar information).
      *
-     * @param accountId the account whose data is to be deleted
+     * @param emailAddress the email address for the account whose data should be deleted
      */
     @Override
-    public void deleteAccountPIMData(final long accountId) throws RemoteException {
+    public void deleteAccountPIMData(final String emailAddress) throws RemoteException {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException {
-                mService.deleteAccountPIMData(accountId);
+                mService.deleteAccountPIMData(emailAddress);
             }
         }, "deleteAccountPIMData");
     }
 
-
     /**
-     * PRELIMINARY
      * Search for messages given a query string.  The string is interpreted as the logical AND of
      * terms separated by white space.  The search is performed on the specified mailbox in the
      * specified account (including subfolders, as specified by the includeSubfolders parameter).
@@ -436,7 +397,6 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException{
-                if (mCallback != null) mService.setCallback(mCallback);
                 mReturn = mService.searchMessages(accountId, searchParams, destMailboxId);
             }
         }, "searchMessages");
@@ -458,11 +418,42 @@ public class EmailServiceProxy extends ServiceProxy implements IEmailService {
         setTask(new ProxyTask() {
             @Override
             public void run() throws RemoteException{
-                if (mCallback != null) mService.setCallback(mCallback);
                 mService.sendMail(accountId);
             }
         }, "sendMail");
     }
+
+    @Override
+    public int getCapabilities(final Account acct) throws RemoteException {
+        setTask(new ProxyTask() {
+            @Override
+            public void run() throws RemoteException{
+                mReturn = mService.getCapabilities(acct);
+            }
+        }, "getCapabilities");
+        waitForCompletion();
+        if (mReturn == null) {
+            return 0;
+        } else {
+            return (Integer)mReturn;
+        }
+    }
+    /**
+     * Request that the account be updated for this service; this call is synchronous
+     *
+     * @param emailAddress the email address of the account to be updated
+     */
+    @Override
+    public void serviceUpdated(final String emailAddress) throws RemoteException {
+        setTask(new ProxyTask() {
+            @Override
+            public void run() throws RemoteException{
+                mService.serviceUpdated(emailAddress);
+            }
+        }, "settingsUpdate");
+        waitForCompletion();
+    }
+
 
     @Override
     public IBinder asBinder() {

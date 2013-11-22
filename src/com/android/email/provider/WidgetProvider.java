@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,106 +16,176 @@
 
 package com.android.email.provider;
 
-import android.app.Service;
-import android.appwidget.AppWidgetManager;
-import android.appwidget.AppWidgetProvider;
-import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
-import android.content.Intent;
-import android.util.Log;
-import android.widget.RemoteViewsService;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.net.Uri;
 
-import com.android.email.Email;
-import com.android.email.R;
-import com.android.email.widget.EmailWidget;
-import com.android.email.widget.WidgetManager;
-import com.android.emailcommon.Logging;
+import com.android.emailcommon.provider.Account;
+import com.android.emailcommon.provider.Mailbox;
+import com.android.mail.providers.Folder;
+import com.android.mail.providers.UIProvider;
+import com.android.mail.utils.LogTag;
+import com.android.mail.utils.LogUtils;
+import com.android.mail.widget.BaseWidgetProvider;
+import com.android.mail.widget.WidgetService;
 
-import java.io.FileDescriptor;
-import java.io.PrintWriter;
+public class WidgetProvider extends BaseWidgetProvider {
+    private static final String LEGACY_PREFS_NAME = "com.android.email.widget.WidgetManager";
+    private static final String LEGACY_ACCOUNT_ID_PREFIX = "accountId_";
+    private static final String LEGACY_MAILBOX_ID_PREFIX = "mailboxId_";
 
-public class WidgetProvider extends AppWidgetProvider {
-    @Override
-    public void onEnabled(final Context context) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(EmailWidget.TAG, "onEnabled");
-        }
-        super.onEnabled(context);
-    }
+    private static final String LOG_TAG = LogTag.getLogTag();
 
-    @Override
-    public void onDisabled(Context context) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(EmailWidget.TAG, "onDisabled");
-        }
-        context.stopService(new Intent(context, WidgetService.class));
-        super.onDisabled(context);
-    }
-
-    @Override
-    public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(EmailWidget.TAG, "onUpdate");
-        }
-        super.onUpdate(context, appWidgetManager, appWidgetIds);
-        WidgetManager.getInstance().updateWidgets(context, appWidgetIds);
-    }
-
+    /**
+     * Remove preferences when deleting widget
+     */
     @Override
     public void onDeleted(Context context, int[] appWidgetIds) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(EmailWidget.TAG, "onDeleted");
-        }
-        WidgetManager.getInstance().deleteWidgets(context, appWidgetIds);
         super.onDeleted(context, appWidgetIds);
+
+        // Remove any legacy Email widget information
+        final SharedPreferences prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, 0);
+        final SharedPreferences.Editor editor = prefs.edit();
+        for (int widgetId : appWidgetIds) {
+            // Remove the account in the preference
+            editor.remove(LEGACY_ACCOUNT_ID_PREFIX + widgetId);
+            editor.remove(LEGACY_MAILBOX_ID_PREFIX + widgetId);
+        }
+        editor.apply();
     }
 
     @Override
-    public void onReceive(final Context context, Intent intent) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(EmailWidget.TAG, "onReceive");
+    protected com.android.mail.providers.Account getAccountObject(
+            Context context, String accountUri) {
+        final ContentResolver resolver = context.getContentResolver();
+        final Cursor accountCursor = resolver.query(Uri.parse(accountUri),
+                UIProvider.ACCOUNTS_PROJECTION_NO_CAPABILITIES, null, null, null);
+
+        return getPopulatedAccountObject(accountCursor);
+    }
+
+
+    @Override
+    protected boolean isAccountValid(Context context, com.android.mail.providers.Account account) {
+        if (account != null) {
+            final ContentResolver resolver = context.getContentResolver();
+            final Cursor accountCursor = resolver.query(account.uri,
+                    UIProvider.ACCOUNTS_PROJECTION_NO_CAPABILITIES, null, null, null);
+            if (accountCursor != null) {
+                try {
+                    return accountCursor.getCount() > 0;
+                } finally {
+                    accountCursor.close();
+                }
+            }
         }
-        super.onReceive(context, intent);
+        return false;
+    }
 
-        if (EmailProvider.ACTION_NOTIFY_MESSAGE_LIST_DATASET_CHANGED.equals(intent.getAction())) {
-            // Retrieve the list of current widgets.
-            final AppWidgetManager appWidgetManager = AppWidgetManager.getInstance(context);
-            final ComponentName component = new ComponentName(context, WidgetProvider.class);
-            final int[] widgetIds = appWidgetManager.getAppWidgetIds(component);
+    @Override
+    protected void migrateLegacyWidgetInformation(Context context, int widgetId) {
+        final SharedPreferences prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, 0);
+        final SharedPreferences.Editor editor = prefs.edit();
 
-            // Ideally, this would only call notify AppWidgetViewDataChanged for the widgets, where
-            // the account had the change, but the current intent doesn't include this information.
-
-            // Calling notifyAppWidgetViewDataChanged will cause onDataSetChanged() to be called
-            // on the RemoteViewsService.RemoteViewsFactory, starting the service if necessary.
-            appWidgetManager.notifyAppWidgetViewDataChanged(widgetIds, R.id.message_list);
+        long accountId = loadAccountIdPref(context, widgetId);
+        long mailboxId = loadMailboxIdPref(context, widgetId);
+        // Legacy support; if preferences haven't been saved for this widget, load something
+        if (accountId == Account.NO_ACCOUNT || mailboxId == Mailbox.NO_MAILBOX) {
+            LogUtils.d(LOG_TAG, "Couldn't load account or mailbox.  accountId: %d" +
+                    " mailboxId: %d widgetId %d", accountId, mailboxId, widgetId);
+            return;
         }
+
+        accountId = migrateLegacyWidgetAccountId(accountId);
+        mailboxId = migrateLegacyWidgetMailboxId(mailboxId, accountId);
+
+        // Get Account and folder objects for the account id and mailbox id
+        final com.android.mail.providers.Account uiAccount = getAccount(context, accountId);
+        final Folder uiFolder = EmailProvider.getFolder(context, mailboxId);
+
+        if (uiAccount != null && uiFolder != null) {
+            WidgetService.saveWidgetInformation(context, widgetId, uiAccount,
+                    uiFolder.folderUri.fullUri.toString());
+
+            updateWidgetInternal(context, widgetId, uiAccount, uiFolder.type,
+                    uiFolder.folderUri.fullUri, uiFolder.conversationListUri, uiFolder.name);
+
+            // Now remove the old legacy preference value
+            editor.remove(LEGACY_ACCOUNT_ID_PREFIX + widgetId);
+            editor.remove(LEGACY_MAILBOX_ID_PREFIX + widgetId);
+        }
+        editor.apply();
+    }
+
+    private static long migrateLegacyWidgetAccountId(long accountId) {
+        if (accountId == Account.ACCOUNT_ID_COMBINED_VIEW) {
+            return EmailProvider.COMBINED_ACCOUNT_ID;
+        }
+        return accountId;
     }
 
     /**
-     * We use the WidgetService for two purposes:
-     *  1) To provide a widget factory for RemoteViews, and
-     *  2) Catch our command Uri's (i.e. take actions on user clicks) and let EmailWidget
-     *     handle them.
+     * @param accountId The migrated accountId
+     * @return
      */
-    public static class WidgetService extends RemoteViewsService {
-        @Override
-        public RemoteViewsFactory onGetViewFactory(Intent intent) {
-            // Which widget do we want (nice alliteration, huh?)
-            int widgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1);
-            if (widgetId == -1) return null;
-            // Find the existing widget or create it
-            return WidgetManager.getInstance().getOrCreateWidget(this, widgetId);
+    private static long migrateLegacyWidgetMailboxId(long mailboxId, long accountId) {
+        if (mailboxId == Mailbox.QUERY_ALL_INBOXES) {
+            return EmailProvider.getVirtualMailboxId(accountId, Mailbox.TYPE_INBOX);
+        } else if (mailboxId == Mailbox.QUERY_ALL_UNREAD) {
+            return EmailProvider.getVirtualMailboxId(accountId, Mailbox.TYPE_UNREAD);
         }
-
-        @Override
-        public int onStartCommand(Intent intent, int flags, int startId) {
-            return Service.START_NOT_STICKY;
-        }
-
-        @Override
-        protected void dump(FileDescriptor fd, PrintWriter writer, String[] args) {
-            WidgetManager.getInstance().dump(fd, writer, args);
-        }
+        return mailboxId;
     }
- }
+
+    private static com.android.mail.providers.Account getAccount(Context context, long accountId) {
+        final ContentResolver resolver = context.getContentResolver();
+        final Cursor ac = resolver.query(EmailProvider.uiUri("uiaccount", accountId),
+                UIProvider.ACCOUNTS_PROJECTION_NO_CAPABILITIES, null, null, null);
+
+        com.android.mail.providers.Account uiAccount = getPopulatedAccountObject(ac);
+
+        return uiAccount;
+    }
+
+    private static com.android.mail.providers.Account getPopulatedAccountObject(
+            final Cursor accountCursor) {
+        if (accountCursor == null) {
+            LogUtils.e(LOG_TAG, "Null account cursor");
+            return null;
+        }
+
+        com.android.mail.providers.Account uiAccount = null;
+        try {
+            if (accountCursor.moveToFirst()) {
+                 uiAccount = new com.android.mail.providers.Account(accountCursor);
+            }
+        } finally {
+            accountCursor.close();
+        }
+        return uiAccount;
+    }
+
+    /**
+     * Returns the saved account ID for the given widget. Otherwise,
+     * {@link com.android.emailcommon.provider.Account#NO_ACCOUNT} if
+     * the account ID was not previously saved.
+     */
+    static long loadAccountIdPref(Context context, int appWidgetId) {
+        final SharedPreferences prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, 0);
+        long accountId = prefs.getLong(LEGACY_ACCOUNT_ID_PREFIX + appWidgetId, Account.NO_ACCOUNT);
+        return accountId;
+    }
+
+    /**
+     * Returns the saved mailbox ID for the given widget. Otherwise,
+     * {@link com.android.emailcommon.provider.Mailbox#NO_MAILBOX} if
+     * the mailbox ID was not previously saved.
+     */
+    static long loadMailboxIdPref(Context context, int appWidgetId) {
+        final SharedPreferences prefs = context.getSharedPreferences(LEGACY_PREFS_NAME, 0);
+        long mailboxId = prefs.getLong(LEGACY_MAILBOX_ID_PREFIX + appWidgetId, Mailbox.NO_MAILBOX);
+        return mailboxId;
+    }
+}

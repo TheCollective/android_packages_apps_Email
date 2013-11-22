@@ -20,9 +20,9 @@ import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
 import android.text.Editable;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.method.DigitsKeyListener;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -34,14 +34,15 @@ import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
 import android.widget.Spinner;
 
-import com.android.email.Email;
 import com.android.email.R;
 import com.android.email.activity.UiUtilities;
 import com.android.email.provider.AccountBackupRestore;
+import com.android.email2.ui.MailActivityEmail;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.utils.LogUtils;
 
 /**
  * Provides UI for SMTP account settings (for IMAP/POP accounts).
@@ -68,46 +69,49 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
     private boolean mStarted;
     private boolean mLoaded;
 
+    // Public no-args constructor needed for fragment re-instantiation
+    public AccountSetupOutgoingFragment() {}
+
     /**
      * Called to do initial creation of a fragment.  This is called after
      * {@link #onAttach(Activity)} and before {@link #onActivityCreated(Bundle)}.
      */
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onCreate");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onCreate");
         }
         super.onCreate(savedInstanceState);
 
         if (savedInstanceState != null) {
             mLoaded = savedInstanceState.getBoolean(STATE_KEY_LOADED, false);
         }
-        mBaseScheme = HostAuth.SCHEME_SMTP;
+        mBaseScheme = HostAuth.LEGACY_SCHEME_SMTP;
     }
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
             Bundle savedInstanceState) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onCreateView");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onCreateView");
         }
-        int layoutId = mSettingsMode
+        final int layoutId = mSettingsMode
                 ? R.layout.account_settings_outgoing_fragment
                 : R.layout.account_setup_outgoing_fragment;
 
-        View view = inflater.inflate(layoutId, container, false);
-        Context context = getActivity();
+        final View view = inflater.inflate(layoutId, container, false);
+        final Context context = getActivity();
 
-        mUsernameView = (EditText) UiUtilities.getView(view, R.id.account_username);
-        mPasswordView = (EditText) UiUtilities.getView(view, R.id.account_password);
-        mServerView = (EditText) UiUtilities.getView(view, R.id.account_server);
-        mPortView = (EditText) UiUtilities.getView(view, R.id.account_port);
-        mRequireLoginView = (CheckBox) UiUtilities.getView(view, R.id.account_require_login);
-        mSecurityTypeView = (Spinner) UiUtilities.getView(view, R.id.account_security_type);
+        mUsernameView = UiUtilities.getView(view, R.id.account_username);
+        mPasswordView = UiUtilities.getView(view, R.id.account_password);
+        mServerView = UiUtilities.getView(view, R.id.account_server);
+        mPortView = UiUtilities.getView(view, R.id.account_port);
+        mRequireLoginView = UiUtilities.getView(view, R.id.account_require_login);
+        mSecurityTypeView = UiUtilities.getView(view, R.id.account_security_type);
         mRequireLoginView.setOnCheckedChangeListener(this);
 
         // Note:  Strings are shared with AccountSetupIncomingFragment
-        SpinnerOption securityTypes[] = {
+        final SpinnerOption securityTypes[] = {
             new SpinnerOption(HostAuth.FLAG_NONE, context.getString(
                     R.string.account_setup_incoming_security_none_label)),
             new SpinnerOption(HostAuth.FLAG_SSL, context.getString(
@@ -120,28 +124,41 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
                     R.string.account_setup_incoming_security_tls_trust_certificates_label)),
         };
 
-        ArrayAdapter<SpinnerOption> securityTypesAdapter = new ArrayAdapter<SpinnerOption>(context,
-                android.R.layout.simple_spinner_item, securityTypes);
+        final ArrayAdapter<SpinnerOption> securityTypesAdapter =
+                new ArrayAdapter<SpinnerOption>(context, android.R.layout.simple_spinner_item,
+                        securityTypes);
         securityTypesAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mSecurityTypeView.setAdapter(securityTypesAdapter);
 
         // Updates the port when the user changes the security type. This allows
         // us to show a reasonable default which the user can change.
-        mSecurityTypeView.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            public void onItemSelected(AdapterView<?> arg0, View arg1, int arg2, long arg3) {
-                updatePortFromSecurityType();
-            }
+        mSecurityTypeView.post(new Runnable() {
+            @Override
+            public void run() {
+                mSecurityTypeView.setOnItemSelectedListener(
+                        new AdapterView.OnItemSelectedListener() {
+                            @Override
+                            public void onItemSelected(AdapterView<?> arg0, View arg1, int arg2,
+                                    long arg3) {
+                                updatePortFromSecurityType();
+                            }
 
-            public void onNothingSelected(AdapterView<?> arg0) { }
-        });
+                            @Override
+                            public void onNothingSelected(AdapterView<?> arg0) {
+                            }
+                        });
+            }});
 
         // Calls validateFields() which enables or disables the Next button
-        TextWatcher validationTextWatcher = new TextWatcher() {
+        final TextWatcher validationTextWatcher = new TextWatcher() {
+            @Override
             public void afterTextChanged(Editable s) {
                 validateFields();
             }
 
+            @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) { }
         };
         mUsernameView.addTextChangedListener(validationTextWatcher);
@@ -160,8 +177,8 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onActivityCreated");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onActivityCreated");
         }
         super.onActivityCreated(savedInstanceState);
     }
@@ -171,8 +188,8 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
      */
     @Override
     public void onStart() {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onStart");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onStart");
         }
         super.onStart();
         mStarted = true;
@@ -184,8 +201,8 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
      */
     @Override
     public void onResume() {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onResume");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onResume");
         }
         super.onResume();
         validateFields();
@@ -193,8 +210,8 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
 
     @Override
     public void onPause() {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onPause");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onPause");
         }
         super.onPause();
     }
@@ -204,8 +221,8 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
      */
     @Override
     public void onStop() {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onStop");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onStop");
         }
         super.onStop();
         mStarted = false;
@@ -216,16 +233,16 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
      */
     @Override
     public void onDestroy() {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onDestroy");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onDestroy");
         }
         super.onDestroy();
     }
 
     @Override
     public void onSaveInstanceState(Bundle outState) {
-        if (Logging.DEBUG_LIFECYCLE && Email.DEBUG) {
-            Log.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onSaveInstanceState");
+        if (Logging.DEBUG_LIFECYCLE && MailActivityEmail.DEBUG) {
+            LogUtils.d(Logging.LOG_TAG, "AccountSetupOutgoingFragment onSaveInstanceState");
         }
         super.onSaveInstanceState(outState);
 
@@ -249,29 +266,29 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
     private void loadSettings() {
         if (mLoaded) return;
 
-        HostAuth sendAuth = SetupData.getAccount().getOrCreateHostAuthSend(mContext);
+        final HostAuth sendAuth = mSetupData.getAccount().getOrCreateHostAuthSend(mContext);
         if ((sendAuth.mFlags & HostAuth.FLAG_AUTHENTICATE) != 0) {
-            String username = sendAuth.mLogin;
+            final String username = sendAuth.mLogin;
             if (username != null) {
                 mUsernameView.setText(username);
                 mRequireLoginView.setChecked(true);
             }
 
-            String password = sendAuth.mPassword;
+            final String password = sendAuth.mPassword;
             if (password != null) {
                 mPasswordView.setText(password);
             }
         }
 
-        int flags = sendAuth.mFlags & ~HostAuth.FLAG_AUTHENTICATE;
+        final int flags = sendAuth.mFlags & ~HostAuth.FLAG_AUTHENTICATE;
         SpinnerOption.setSpinnerOptionValue(mSecurityTypeView, flags);
 
-        String hostname = sendAuth.mAddress;
+        final String hostname = sendAuth.mAddress;
         if (hostname != null) {
             mServerView.setText(hostname);
         }
 
-        int port = sendAuth.mPort;
+        final int port = sendAuth.mPort;
         if (port != -1) {
             mPortView.setText(Integer.toString(port));
         } else {
@@ -292,8 +309,8 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
             Utility.isServerNameValid(mServerView) && Utility.isPortFieldValid(mPortView);
 
         if (enabled && mRequireLoginView.isChecked()) {
-            enabled = (Utility.isTextViewNotEmpty(mUsernameView)
-                    && Utility.isTextViewNotEmpty(mPasswordView));
+            enabled = !TextUtils.isEmpty(mUsernameView.getText())
+                    && !TextUtils.isEmpty(mPasswordView.getText());
         }
         enableNextButton(enabled);
         // Warn (but don't prevent) if password has leading/trailing spaces
@@ -312,13 +329,13 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
     }
 
     private int getPortFromSecurityType() {
-        int securityType = (Integer)((SpinnerOption)mSecurityTypeView.getSelectedItem()).value;
-        int port = (securityType & HostAuth.FLAG_SSL) != 0 ? SMTP_PORT_SSL : SMTP_PORT_NORMAL;
-        return port;
+        final int securityType =
+                (Integer)((SpinnerOption)mSecurityTypeView.getSelectedItem()).value;
+        return (securityType & HostAuth.FLAG_SSL) != 0 ? SMTP_PORT_SSL : SMTP_PORT_NORMAL;
     }
 
     private void updatePortFromSecurityType() {
-        int port = getPortFromSecurityType();
+        final int port = getPortFromSecurityType();
         mPortView.setText(Integer.toString(port));
     }
 
@@ -328,7 +345,7 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
      */
     @Override
     public void saveSettingsAfterEdit() {
-        Account account = SetupData.getAccount();
+        final Account account = mSetupData.getAccount();
         account.mHostAuthSend.update(mContext, account.mHostAuthSend.toContentValues());
         // Update the backup (side copy) of the accounts
         AccountBackupRestore.backup(mContext);
@@ -346,29 +363,31 @@ public class AccountSetupOutgoingFragment extends AccountServerBaseFragment
      */
     @Override
     public void onNext() {
-        Account account = SetupData.getAccount();
-        HostAuth sendAuth = account.getOrCreateHostAuthSend(mContext);
+        final Account account = mSetupData.getAccount();
+        final HostAuth sendAuth = account.getOrCreateHostAuthSend(mContext);
 
         if (mRequireLoginView.isChecked()) {
-            String userName = mUsernameView.getText().toString().trim();
-            String userPassword = mPasswordView.getText().toString();
+            final String userName = mUsernameView.getText().toString().trim();
+            final String userPassword = mPasswordView.getText().toString();
             sendAuth.setLogin(userName, userPassword);
         } else {
             sendAuth.setLogin(null, null);
         }
 
-        String serverAddress = mServerView.getText().toString().trim();
+        final String serverAddress = mServerView.getText().toString().trim();
         int serverPort;
         try {
             serverPort = Integer.parseInt(mPortView.getText().toString().trim());
         } catch (NumberFormatException e) {
             serverPort = getPortFromSecurityType();
-            Log.d(Logging.LOG_TAG, "Non-integer server port; using '" + serverPort + "'");
+            LogUtils.d(Logging.LOG_TAG, "Non-integer server port; using '" + serverPort + "'");
         }
-        int securityType = (Integer)((SpinnerOption)mSecurityTypeView.getSelectedItem()).value;
+        final int securityType =
+                (Integer)((SpinnerOption)mSecurityTypeView.getSelectedItem()).value;
         sendAuth.setConnection(mBaseScheme, serverAddress, serverPort, securityType);
         sendAuth.mDomain = null;
 
         mCallback.onProceedNext(SetupData.CHECK_OUTGOING, this);
+        clearButtonBounce();
     }
 }

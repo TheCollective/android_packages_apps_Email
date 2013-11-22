@@ -24,40 +24,41 @@ import android.accounts.AuthenticatorException;
 import android.accounts.OperationCanceledException;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.os.AsyncTask;
 import android.os.Bundle;
-import android.util.Log;
+import android.os.RemoteException;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.Spinner;
 
-import com.android.email.Email;
 import com.android.email.R;
 import com.android.email.activity.ActivityHelper;
 import com.android.email.activity.UiUtilities;
 import com.android.email.service.EmailServiceUtils;
-import com.android.email.service.MailService;
+import com.android.email.service.EmailServiceUtils.EmailServiceInfo;
+import com.android.email2.ui.MailActivityEmail;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.provider.Account;
-import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.provider.Policy;
+import com.android.emailcommon.service.EmailServiceProxy;
 import com.android.emailcommon.service.SyncWindow;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.preferences.AccountPreferences;
+import com.android.mail.utils.LogUtils;
 
 import java.io.IOException;
 
-/**
- * TODO: Cleanup the manipulation of Account.FLAGS_INCOMPLETE and make sure it's never left set.
- */
 public class AccountSetupOptions extends AccountSetupActivity implements OnClickListener {
+    private static final String EXTRA_IS_PROCESSING_KEY = "com.android.email.is_processing";
 
     private Spinner mCheckFrequencyView;
     private Spinner mSyncWindowView;
-    private CheckBox mDefaultView;
     private CheckBox mNotifyView;
     private CheckBox mSyncContactsView;
     private CheckBox mSyncCalendarView;
@@ -65,14 +66,20 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
     private CheckBox mBackgroundAttachmentsView;
     private View mAccountSyncWindowRow;
     private boolean mDonePressed = false;
+    private EmailServiceInfo mServiceInfo;
+    private boolean mIsProcessing = false;
+
+    private ProgressDialog mCreateAccountDialog;
 
     public static final int REQUEST_CODE_ACCEPT_POLICIES = 1;
 
     /** Default sync window for new EAS accounts */
-    private static final int SYNC_WINDOW_EAS_DEFAULT = SyncWindow.SYNC_WINDOW_AUTO;
+    private static final int SYNC_WINDOW_EAS_DEFAULT = SyncWindow.SYNC_WINDOW_1_WEEK;
 
-    public static void actionOptions(Activity fromActivity) {
-        fromActivity.startActivity(new Intent(fromActivity, AccountSetupOptions.class));
+    public static void actionOptions(Activity fromActivity, SetupData setupData) {
+        final Intent intent = new ForwardingIntent(fromActivity, AccountSetupOptions.class);
+        intent.putExtra(SetupData.EXTRA_SETUP_DATA, setupData);
+        fromActivity.startActivity(intent);
     }
 
     @Override
@@ -81,99 +88,88 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
         ActivityHelper.debugSetWindowFlags(this);
         setContentView(R.layout.account_setup_options);
 
-        mCheckFrequencyView = (Spinner) UiUtilities.getView(this, R.id.account_check_frequency);
-        mSyncWindowView = (Spinner) UiUtilities.getView(this, R.id.account_sync_window);
-        mDefaultView = (CheckBox) UiUtilities.getView(this, R.id.account_default);
-        mNotifyView = (CheckBox) UiUtilities.getView(this, R.id.account_notify);
-        mSyncContactsView = (CheckBox) UiUtilities.getView(this, R.id.account_sync_contacts);
-        mSyncCalendarView = (CheckBox) UiUtilities.getView(this, R.id.account_sync_calendar);
-        mSyncEmailView = (CheckBox) UiUtilities.getView(this, R.id.account_sync_email);
+        mCheckFrequencyView = UiUtilities.getView(this, R.id.account_check_frequency);
+        mSyncWindowView = UiUtilities.getView(this, R.id.account_sync_window);
+        mNotifyView = UiUtilities.getView(this, R.id.account_notify);
+        mSyncContactsView = UiUtilities.getView(this, R.id.account_sync_contacts);
+        mSyncCalendarView = UiUtilities.getView(this, R.id.account_sync_calendar);
+        mSyncEmailView = UiUtilities.getView(this, R.id.account_sync_email);
         mSyncEmailView.setChecked(true);
-        mBackgroundAttachmentsView = (CheckBox) UiUtilities.getView(this,
-                R.id.account_background_attachments);
+        mBackgroundAttachmentsView = UiUtilities.getView(this, R.id.account_background_attachments);
         mBackgroundAttachmentsView.setChecked(true);
         UiUtilities.getView(this, R.id.previous).setOnClickListener(this);
         UiUtilities.getView(this, R.id.next).setOnClickListener(this);
         mAccountSyncWindowRow = UiUtilities.getView(this, R.id.account_sync_window_row);
 
-        // Generate spinner entries using XML arrays used by the preferences
-        int frequencyValuesId;
-        int frequencyEntriesId;
-        Account account = SetupData.getAccount();
-        HostAuth host = account.getOrCreateHostAuthRecv(this);
-        String protocol = host != null ? host.mProtocol : "";
-        boolean eas = HostAuth.SCHEME_EAS.equals(protocol);
-        if (eas) {
-            frequencyValuesId = R.array.account_settings_check_frequency_values_push;
-            frequencyEntriesId = R.array.account_settings_check_frequency_entries_push;
-        } else {
-            frequencyValuesId = R.array.account_settings_check_frequency_values;
-            frequencyEntriesId = R.array.account_settings_check_frequency_entries;
-        }
-        CharSequence[] frequencyValues = getResources().getTextArray(frequencyValuesId);
-        CharSequence[] frequencyEntries = getResources().getTextArray(frequencyEntriesId);
+        final Account account = mSetupData.getAccount();
+        mServiceInfo = EmailServiceUtils.getServiceInfo(getApplicationContext(),
+                account.mHostAuthRecv.mProtocol);
+        final CharSequence[] frequencyValues = mServiceInfo.syncIntervals;
+        final CharSequence[] frequencyEntries = mServiceInfo.syncIntervalStrings;
 
-        // Now create the array used by the Spinner
-        SpinnerOption[] checkFrequencies = new SpinnerOption[frequencyEntries.length];
+        // Now create the array used by the sync interval Spinner
+        final SpinnerOption[] checkFrequencies = new SpinnerOption[frequencyEntries.length];
         for (int i = 0; i < frequencyEntries.length; i++) {
             checkFrequencies[i] = new SpinnerOption(
                     Integer.valueOf(frequencyValues[i].toString()), frequencyEntries[i].toString());
         }
-
-        ArrayAdapter<SpinnerOption> checkFrequenciesAdapter = new ArrayAdapter<SpinnerOption>(this,
-                android.R.layout.simple_spinner_item, checkFrequencies);
+        final ArrayAdapter<SpinnerOption> checkFrequenciesAdapter =
+                new ArrayAdapter<SpinnerOption>(this, android.R.layout.simple_spinner_item,
+                        checkFrequencies);
         checkFrequenciesAdapter
                 .setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mCheckFrequencyView.setAdapter(checkFrequenciesAdapter);
 
-        if (eas) {
-            enableEASSyncWindowSpinner();
+        if (mServiceInfo.offerLookback) {
+            enableLookbackSpinner();
         }
 
-        // Note:  It is OK to use mAccount.mIsDefault here *only* because the account
-        // has not been written to the DB yet.  Ordinarily, call Account.getDefaultAccountId().
-        if (account.mIsDefault || SetupData.isDefault()) {
-            mDefaultView.setChecked(true);
-        }
-        mNotifyView.setChecked(
-                (account.getFlags() & Account.FLAGS_NOTIFY_NEW_MAIL) != 0);
+        mNotifyView.setChecked(true); // By default, we want notifications on
         SpinnerOption.setSpinnerOptionValue(mCheckFrequencyView, account.getSyncInterval());
 
-        // Setup any additional items to support EAS & EAS flow mode
-        if (eas) {
-            // "also sync contacts" == "true"
+        if (mServiceInfo.syncContacts) {
             mSyncContactsView.setVisibility(View.VISIBLE);
             mSyncContactsView.setChecked(true);
+            UiUtilities.setVisibilitySafe(this, R.id.account_sync_contacts_divider, View.VISIBLE);
+        }
+        if (mServiceInfo.syncCalendar) {
             mSyncCalendarView.setVisibility(View.VISIBLE);
             mSyncCalendarView.setChecked(true);
-            // Show the associated dividers
-            UiUtilities.setVisibilitySafe(this, R.id.account_sync_contacts_divider, View.VISIBLE);
             UiUtilities.setVisibilitySafe(this, R.id.account_sync_calendar_divider, View.VISIBLE);
         }
 
-        // If we are in POP3, hide the "Background Attachments" mode
-        if (HostAuth.SCHEME_POP3.equals(protocol)) {
+        if (!mServiceInfo.offerAttachmentPreload) {
             mBackgroundAttachmentsView.setVisibility(View.GONE);
             UiUtilities.setVisibilitySafe(this, R.id.account_background_attachments_divider,
                     View.GONE);
         }
 
-        // If we are just visiting here to fill in details, exit immediately
-        if (SetupData.isAutoSetup() ||
-                SetupData.getFlowMode() == SetupData.FLOW_MODE_FORCE_CREATE) {
+        mIsProcessing = savedInstanceState != null &&
+                savedInstanceState.getBoolean(EXTRA_IS_PROCESSING_KEY, false);
+        if (mIsProcessing) {
+            // We are already processing, so just show the dialog until we finish
+            showCreateAccountDialog();
+        } else if (mSetupData.getFlowMode() == SetupData.FLOW_MODE_FORCE_CREATE) {
+            // If we are just visiting here to fill in details, exit immediately
             onDone();
         }
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean(EXTRA_IS_PROCESSING_KEY, mIsProcessing);
     }
 
     @Override
     public void finish() {
         // If the account manager initiated the creation, and success was not reported,
         // then we assume that we're giving up (for any reason) - report failure.
-        AccountAuthenticatorResponse authenticatorResponse =
-            SetupData.getAccountAuthenticatorResponse();
+        final AccountAuthenticatorResponse authenticatorResponse =
+                mSetupData.getAccountAuthenticatorResponse();
         if (authenticatorResponse != null) {
             authenticatorResponse.onError(AccountManager.ERROR_CODE_CANCELED, "canceled");
-            SetupData.setAccountAuthenticatorResponse(null);
+            mSetupData.setAccountAuthenticatorResponse(null);
         }
         super.finish();
     }
@@ -205,89 +201,95 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
      * the account to the database (making it real for the first time.)
      * Finally, we call setupAccountManagerAccount(), which will eventually complete via callback.
      */
+    @SuppressWarnings("deprecation")
     private void onDone() {
-        final Account account = SetupData.getAccount();
+        final Account account = mSetupData.getAccount();
         if (account.isSaved()) {
             // Disrupting the normal flow could get us here, but if the account is already
             // saved, we've done this work
             return;
+        } else if (account.mHostAuthRecv == null) {
+            throw new IllegalStateException("in AccountSetupOptions with null mHostAuthRecv");
         }
+
+        mIsProcessing = true;
         account.setDisplayName(account.getEmailAddress());
-        int newFlags = account.getFlags() &
-            ~(Account.FLAGS_NOTIFY_NEW_MAIL | Account.FLAGS_BACKGROUND_ATTACHMENTS);
-        if (mNotifyView.isChecked()) {
-            newFlags |= Account.FLAGS_NOTIFY_NEW_MAIL;
-        }
-        if (mBackgroundAttachmentsView.isChecked()) {
+        int newFlags = account.getFlags() & ~(Account.FLAGS_BACKGROUND_ATTACHMENTS);
+        if (mServiceInfo.offerAttachmentPreload && mBackgroundAttachmentsView.isChecked()) {
             newFlags |= Account.FLAGS_BACKGROUND_ATTACHMENTS;
         }
         account.setFlags(newFlags);
         account.setSyncInterval((Integer)((SpinnerOption)mCheckFrequencyView
                 .getSelectedItem()).value);
         if (mAccountSyncWindowRow.getVisibility() == View.VISIBLE) {
-            int window = (Integer)((SpinnerOption)mSyncWindowView.getSelectedItem()).value;
-            account.setSyncLookback(window);
-        }
-        account.setDefaultAccount(mDefaultView.isChecked());
-
-        if (account.mHostAuthRecv == null) {
-            throw new IllegalStateException("in AccountSetupOptions with null mHostAuthRecv");
+            account.setSyncLookback(
+                    (Integer)((SpinnerOption)mSyncWindowView.getSelectedItem()).value);
         }
 
         // Finish setting up the account, and commit it to the database
         // Set the incomplete flag here to avoid reconciliation issues in ExchangeService
         account.mFlags |= Account.FLAGS_INCOMPLETE;
-        boolean calendar = false;
-        boolean contacts = false;
-        boolean email = mSyncEmailView.isChecked();
-        if ("eas".equals(account.getOrCreateHostAuthRecv(this).mProtocol)) {
-            if (SetupData.getPolicy() != null) {
-                account.mFlags |= Account.FLAGS_SECURITY_HOLD;
-                account.mPolicy = SetupData.getPolicy();
-            }
-            // Get flags for contacts/calendar sync
-            contacts = mSyncContactsView.isChecked();
-            calendar = mSyncCalendarView.isChecked();
+        if (mSetupData.getPolicy() != null) {
+            account.mFlags |= Account.FLAGS_SECURITY_HOLD;
+            account.mPolicy = mSetupData.getPolicy();
         }
 
         // Finally, write the completed account (for the first time) and then
         // install it into the Account manager as well.  These are done off-thread.
         // The account manager will report back via the callback, which will take us to
         // the next operations.
-        final boolean email2 = email;
-        final boolean calendar2 = calendar;
-        final boolean contacts2 = contacts;
+        final boolean email = mSyncEmailView.isChecked();
+        final boolean calendar = mServiceInfo.syncCalendar && mSyncCalendarView.isChecked();
+        final boolean contacts = mServiceInfo.syncContacts && mSyncContactsView.isChecked();
+
+        showCreateAccountDialog();
         Utility.runAsync(new Runnable() {
             @Override
             public void run() {
-                Context context = AccountSetupOptions.this;
+                final Context context = AccountSetupOptions.this;
                 AccountSettingsUtils.commitSettings(context, account);
-                MailService.setupAccountManagerAccount(context, account,
-                        email2, calendar2, contacts2, mAccountManagerCallback);
+                EmailServiceUtils.setupAccountManagerAccount(context, account,
+                        email, calendar, contacts, mAccountManagerCallback);
+
+                // We can move the notification setting to the inbox FolderPreferences later, once
+                // we know what the inbox is
+                final AccountPreferences accountPreferences =
+                        new AccountPreferences(context, account.getEmailAddress());
+                accountPreferences.setDefaultInboxNotificationsEnabled(mNotifyView.isChecked());
             }
         });
+    }
+
+    private void showCreateAccountDialog() {
+        /// Show "Creating account..." dialog
+        mCreateAccountDialog = new ProgressDialog(this);
+        mCreateAccountDialog.setIndeterminate(true);
+        mCreateAccountDialog.setMessage(getString(R.string.account_setup_creating_account_msg));
+        mCreateAccountDialog.show();
     }
 
     /**
      * This is called at the completion of MailService.setupAccountManagerAccount()
      */
     AccountManagerCallback<Bundle> mAccountManagerCallback = new AccountManagerCallback<Bundle>() {
+        @Override
         public void run(AccountManagerFuture<Bundle> future) {
             try {
-                Bundle bundle = future.getResult();
-                bundle.keySet();
+                // Block until the operation completes
+                future.getResult();
                 AccountSetupOptions.this.runOnUiThread(new Runnable() {
+                    @Override
                     public void run() {
                         optionsComplete();
                     }
                 });
                 return;
             } catch (OperationCanceledException e) {
-                Log.d(Logging.LOG_TAG, "addAccount was canceled");
+                LogUtils.d(Logging.LOG_TAG, "addAccount was canceled");
             } catch (IOException e) {
-                Log.d(Logging.LOG_TAG, "addAccount failed: " + e);
+                LogUtils.d(Logging.LOG_TAG, "addAccount failed: " + e);
             } catch (AuthenticatorException e) {
-                Log.d(Logging.LOG_TAG, "addAccount failed: " + e);
+                LogUtils.d(Logging.LOG_TAG, "addAccount failed: " + e);
             }
             showErrorDialog(R.string.account_setup_failed_dlg_auth_message,
                     R.string.system_account_create_failed);
@@ -299,6 +301,7 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
      */
     private void showErrorDialog(final int msgResId, final Object... args) {
         runOnUiThread(new Runnable() {
+            @Override
             public void run() {
                 new AlertDialog.Builder(AccountSetupOptions.this)
                         .setIconAttribute(android.R.attr.alertDialogIcon)
@@ -308,8 +311,9 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
                         .setPositiveButton(
                                 getString(R.string.account_setup_failed_dlg_edit_details_action),
                                 new DialogInterface.OnClickListener() {
+                                    @Override
                                     public void onClick(DialogInterface dialog, int which) {
-                                       finish();
+                                        finish();
                                     }
                                 })
                         .show();
@@ -322,25 +326,34 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
      */
     private void optionsComplete() {
         // If the account manager initiated the creation, report success at this point
-        AccountAuthenticatorResponse authenticatorResponse =
-            SetupData.getAccountAuthenticatorResponse();
+        final AccountAuthenticatorResponse authenticatorResponse =
+            mSetupData.getAccountAuthenticatorResponse();
         if (authenticatorResponse != null) {
             authenticatorResponse.onResult(null);
-            SetupData.setAccountAuthenticatorResponse(null);
+            mSetupData.setAccountAuthenticatorResponse(null);
         }
 
         // Now that AccountManager account creation is complete, clear the INCOMPLETE flag
-        Account account = SetupData.getAccount();
+        final Account account = mSetupData.getAccount();
         account.mFlags &= ~Account.FLAGS_INCOMPLETE;
         AccountSettingsUtils.commitSettings(AccountSetupOptions.this, account);
 
         // If we've got policies for this account, ask the user to accept.
         if ((account.mFlags & Account.FLAGS_SECURITY_HOLD) != 0) {
-            Intent intent = AccountSecurity.actionUpdateSecurityIntent(this, account.mId, false);
+            final Intent intent =
+                    AccountSecurity.actionUpdateSecurityIntent(this, account.mId, false);
             startActivityForResult(intent, AccountSetupOptions.REQUEST_CODE_ACCEPT_POLICIES);
             return;
         }
         saveAccountAndFinish();
+
+        // Update the folder list (to get our starting folders, e.g. Inbox)
+        final EmailServiceProxy proxy = EmailServiceUtils.getServiceForAccount(this, account.mId);
+        try {
+            proxy.updateFolderList(account.mId);
+        } catch (RemoteException e) {
+            // It's all good
+        }
     }
 
     /**
@@ -360,42 +373,44 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
      *  Move to final setup screen
      */
     private void saveAccountAndFinish() {
-        Utility.runAsync(new Runnable() {
+        AsyncTask<Void, Void, Void> asyncTask = new AsyncTask<Void, Void, Void>() {
             @Override
-            public void run() {
-                AccountSetupOptions context = AccountSetupOptions.this;
+            protected Void doInBackground(Void... params) {
+                final AccountSetupOptions context = AccountSetupOptions.this;
                 // Clear the security hold flag now
-                Account account = SetupData.getAccount();
+                final Account account = mSetupData.getAccount();
                 account.mFlags &= ~Account.FLAGS_SECURITY_HOLD;
                 AccountSettingsUtils.commitSettings(context, account);
                 // Start up services based on new account(s)
-                Email.setServicesEnabledSync(context);
-                EmailServiceUtils.startExchangeService(context);
+                MailActivityEmail.setServicesEnabledSync(context);
+                EmailServiceUtils.startService(context, account.mHostAuthRecv.mProtocol);
                 // Move to final setup screen
-                AccountSetupNames.actionSetNames(context);
+                AccountSetupNames.actionSetNames(context, mSetupData);
                 finish();
+                return null;
             }
-        });
+        };
+        asyncTask.execute();
     }
 
     /**
      * Enable an additional spinner using the arrays normally handled by preferences
      */
-    private void enableEASSyncWindowSpinner() {
+    private void enableLookbackSpinner() {
         // Show everything
         mAccountSyncWindowRow.setVisibility(View.VISIBLE);
 
         // Generate spinner entries using XML arrays used by the preferences
-        CharSequence[] windowValues = getResources().getTextArray(
+        final CharSequence[] windowValues = getResources().getTextArray(
                 R.array.account_settings_mail_window_values);
-        CharSequence[] windowEntries = getResources().getTextArray(
+        final CharSequence[] windowEntries = getResources().getTextArray(
                 R.array.account_settings_mail_window_entries);
 
         // Find a proper maximum for email lookback, based on policy (if we have one)
         int maxEntry = windowEntries.length;
-        Policy policy = SetupData.getAccount().mPolicy;
+        final Policy policy = mSetupData.getAccount().mPolicy;
         if (policy != null) {
-            int maxLookback = policy.mMaxEmailLookback;
+            final int maxLookback = policy.mMaxEmailLookback;
             if (maxLookback != 0) {
                 // Offset/Code   0      1      2      3      4        5
                 // Entries      auto, 1 day, 3 day, 1 week, 2 week, 1 month
@@ -406,7 +421,7 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
         }
 
         // Now create the array used by the Spinner
-        SpinnerOption[] windowOptions = new SpinnerOption[maxEntry];
+        final SpinnerOption[] windowOptions = new SpinnerOption[maxEntry];
         int defaultIndex = -1;
         for (int i = 0; i < maxEntry; i++) {
             final int value = Integer.valueOf(windowValues[i].toString());
@@ -416,14 +431,15 @@ public class AccountSetupOptions extends AccountSetupActivity implements OnClick
             }
         }
 
-        ArrayAdapter<SpinnerOption> windowOptionsAdapter = new ArrayAdapter<SpinnerOption>(this,
-                android.R.layout.simple_spinner_item, windowOptions);
+        final ArrayAdapter<SpinnerOption> windowOptionsAdapter =
+                new ArrayAdapter<SpinnerOption>(this, android.R.layout.simple_spinner_item,
+                        windowOptions);
         windowOptionsAdapter
                 .setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mSyncWindowView.setAdapter(windowOptionsAdapter);
 
         SpinnerOption.setSpinnerOptionValue(mSyncWindowView,
-                SetupData.getAccount().getSyncLookback());
+                mSetupData.getAccount().getSyncLookback());
         if (defaultIndex >= 0) {
             mSyncWindowView.setSelection(defaultIndex);
         }

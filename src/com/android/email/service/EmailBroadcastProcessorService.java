@@ -24,20 +24,32 @@ import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
+import android.content.PeriodicSync;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
-import android.util.Log;
+import android.os.Bundle;
+import android.provider.CalendarContract;
+import android.provider.ContactsContract;
+import android.text.format.DateUtils;
 
-import com.android.email.Email;
 import com.android.email.Preferences;
+import com.android.email.R;
 import com.android.email.SecurityPolicy;
-import com.android.email.VendorPolicyLoader;
 import com.android.email.activity.setup.AccountSettings;
+import com.android.email.provider.AccountReconciler;
 import com.android.emailcommon.Logging;
+import com.android.emailcommon.VendorPolicyLoader;
 import com.android.emailcommon.provider.Account;
+import com.android.emailcommon.provider.EmailContent;
 import com.android.emailcommon.provider.EmailContent.AccountColumns;
 import com.android.emailcommon.provider.HostAuth;
+import com.android.mail.utils.LogUtils;
+import com.google.common.collect.Maps;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The service that really handles broadcast intents on a worker thread.
@@ -64,6 +76,9 @@ public class EmailBroadcastProcessorService extends IntentService {
     private static final String ACTION_DEVICE_POLICY_ADMIN = "com.android.email.devicepolicy";
     private static final String EXTRA_DEVICE_POLICY_ADMIN = "message_code";
 
+    // Action used for EmailUpgradeBroadcastReceiver.
+    private static final String ACTION_UPGRADE_BROADCAST = "upgrade_broadcast_receiver";
+
     public EmailBroadcastProcessorService() {
         // Class name will be the thread name.
         super(EmailBroadcastProcessorService.class.getName());
@@ -79,6 +94,12 @@ public class EmailBroadcastProcessorService extends IntentService {
         Intent i = new Intent(context, EmailBroadcastProcessorService.class);
         i.setAction(ACTION_BROADCAST);
         i.putExtra(Intent.EXTRA_INTENT, broadcastIntent);
+        context.startService(i);
+    }
+
+    public static void processUpgradeBroadcastIntent(final Context context) {
+        final Intent i = new Intent(context, EmailBroadcastProcessorService.class);
+        i.setAction(ACTION_UPGRADE_BROADCAST);
         context.startService(i);
     }
 
@@ -106,15 +127,6 @@ public class EmailBroadcastProcessorService extends IntentService {
 
             if (Intent.ACTION_BOOT_COMPLETED.equals(broadcastAction)) {
                 onBootCompleted();
-                // Force policies to be set in DPM
-                SecurityPolicy.getInstance(this);
-            // TODO: Do a better job when we get ACTION_DEVICE_STORAGE_LOW.
-            //       The code below came from very old code....
-            } else if (Intent.ACTION_DEVICE_STORAGE_LOW.equals(broadcastAction)) {
-                // Stop IMAP/POP3 poll.
-                MailService.actionCancel(this);
-            } else if (Intent.ACTION_DEVICE_STORAGE_OK.equals(broadcastAction)) {
-                enableComponentsIfNecessary();
             } else if (ACTION_SECRET_CODE.equals(broadcastAction)
                     && SECRET_CODE_HOST_DEBUG_SCREEN.equals(broadcastIntent.getData().getHost())) {
                 AccountSettings.actionSettingsWithDebug(this);
@@ -124,15 +136,137 @@ public class EmailBroadcastProcessorService extends IntentService {
         } else if (ACTION_DEVICE_POLICY_ADMIN.equals(action)) {
             int message = intent.getIntExtra(EXTRA_DEVICE_POLICY_ADMIN, -1);
             SecurityPolicy.onDeviceAdminReceiverMessage(this, message);
+        } else if (ACTION_UPGRADE_BROADCAST.equals(action)) {
+            onAppUpgrade();
         }
     }
 
-    private void enableComponentsIfNecessary() {
-        if (Email.setServicesEnabledSync(this)) {
-            // At least one account exists.
-            // TODO probably we should check if it's a POP/IMAP account.
-            MailService.actionReschedule(this);
+    private void disableComponent(final Class<?> klass) {
+        getPackageManager().setComponentEnabledSetting(new ComponentName(this, klass),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+    }
+
+    private boolean isComponentDisabled(final Class<?> klass) {
+        return getPackageManager().getComponentEnabledSetting(new ComponentName(this, klass))
+                == PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+    }
+
+    private void updateAccountManagerAccountsOfType(final String amAccountType,
+            final Map<String, String> protocolMap) {
+        final android.accounts.Account[] amAccounts =
+                AccountManager.get(this).getAccountsByType(amAccountType);
+
+        for (android.accounts.Account amAccount: amAccounts) {
+            EmailServiceUtils.updateAccountManagerType(this, amAccount, protocolMap);
         }
+    }
+
+    /**
+     * Delete all periodic syncs for an account.
+     * @param amAccount The account for which to disable syncs.
+     * @param authority The authority for which to disable syncs.
+     */
+    private static void removePeriodicSyncs(final android.accounts.Account amAccount,
+            final String authority) {
+        final List<PeriodicSync> syncs =
+                ContentResolver.getPeriodicSyncs(amAccount, authority);
+        for (final PeriodicSync sync : syncs) {
+            ContentResolver.removePeriodicSync(amAccount, authority, sync.extras);
+        }
+    }
+
+    /**
+     * Remove all existing periodic syncs for an account type, and add the necessary syncs.
+     * @param amAccountType The account type to handle.
+     * @param syncIntervals The map of all account addresses to sync intervals in the DB.
+     */
+    private void fixPeriodicSyncs(final String amAccountType,
+            final Map<String, Integer> syncIntervals) {
+        final android.accounts.Account[] amAccounts =
+                AccountManager.get(this).getAccountsByType(amAccountType);
+        for (android.accounts.Account amAccount : amAccounts) {
+            // First delete existing periodic syncs.
+            removePeriodicSyncs(amAccount, EmailContent.AUTHORITY);
+            removePeriodicSyncs(amAccount, CalendarContract.AUTHORITY);
+            removePeriodicSyncs(amAccount, ContactsContract.AUTHORITY);
+
+            // Add back a sync for this account if necessary (i.e. the account has a positive
+            // sync interval in the DB). This assumes that the email app requires unique email
+            // addresses for each account, which is currently the case.
+            final Integer syncInterval = syncIntervals.get(amAccount.name);
+            if (syncInterval != null && syncInterval > 0) {
+                // Sync interval is stored in minutes in DB, but we want the value in seconds.
+                ContentResolver.addPeriodicSync(amAccount, EmailContent.AUTHORITY, Bundle.EMPTY,
+                        syncInterval * DateUtils.MINUTE_IN_MILLIS / DateUtils.SECOND_IN_MILLIS);
+            }
+        }
+    }
+
+    /** Projection used for getting sync intervals for all accounts. */
+    private static final String[] ACCOUNT_SYNC_INTERVAL_PROJECTION =
+            { AccountColumns.EMAIL_ADDRESS, AccountColumns.SYNC_INTERVAL };
+    private static final int ACCOUNT_SYNC_INTERVAL_ADDRESS_COLUMN = 0;
+    private static final int ACCOUNT_SYNC_INTERVAL_INTERVAL_COLUMN = 1;
+
+    /**
+     * Get the sync interval for all accounts, as stored in the DB.
+     * @return The map of all sync intervals by account email address.
+     */
+    private Map<String, Integer> getSyncIntervals() {
+        final Cursor c = getContentResolver().query(Account.CONTENT_URI,
+                ACCOUNT_SYNC_INTERVAL_PROJECTION, null, null, null);
+        if (c != null) {
+            final Map<String, Integer> periodicSyncs =
+                    Maps.newHashMapWithExpectedSize(c.getCount());
+            try {
+                while (c.moveToNext()) {
+                    periodicSyncs.put(c.getString(ACCOUNT_SYNC_INTERVAL_ADDRESS_COLUMN),
+                            c.getInt(ACCOUNT_SYNC_INTERVAL_INTERVAL_COLUMN));
+                }
+            } finally {
+                c.close();
+            }
+            return periodicSyncs;
+        }
+        return Collections.emptyMap();
+    }
+
+    private void onAppUpgrade() {
+        if (isComponentDisabled(EmailUpgradeBroadcastReceiver.class)) {
+            return;
+        }
+        // TODO: Only do this for Email2Google.
+        // When upgrading to Email2Google, we need to essentially rename the account manager
+        // type for all existing accounts, so we add new ones and delete the old.
+        // We specify the translations in this map. We map from old protocol name to new protocol
+        // name, and from protocol name + "_type" to new account manager type name. (Email1 did
+        // not use distinct account manager types for POP and IMAP, but Email2 does, hence this
+        // weird mapping.)
+        final Map<String, String> protocolMap = Maps.newHashMapWithExpectedSize(4);
+        protocolMap.put("imap", getString(R.string.protocol_legacy_imap));
+        protocolMap.put("pop3", getString(R.string.protocol_pop3));
+        protocolMap.put("imap_type", getString(R.string.account_manager_type_legacy_imap));
+        protocolMap.put("pop3_type", getString(R.string.account_manager_type_pop3));
+        updateAccountManagerAccountsOfType("com.android.email", protocolMap);
+
+        protocolMap.clear();
+        protocolMap.put("eas", getString(R.string.protocol_eas));
+        protocolMap.put("eas_type", getString(R.string.account_manager_type_exchange));
+        updateAccountManagerAccountsOfType("com.android.exchange", protocolMap);
+
+        // Disable the old authenticators.
+        disableComponent(LegacyEmailAuthenticatorService.class);
+        disableComponent(LegacyEasAuthenticatorService.class);
+
+        // Fix periodic syncs.
+        final Map<String, Integer> syncIntervals = getSyncIntervals();
+        for (final EmailServiceUtils.EmailServiceInfo service
+                : EmailServiceUtils.getServiceInfoList(this)) {
+            fixPeriodicSyncs(service.accountType, syncIntervals);
+        }
+
+        // Disable the upgrade broadcast receiver now that we're fully upgraded.
+        disableComponent(EmailUpgradeBroadcastReceiver.class);
     }
 
     /**
@@ -140,11 +274,19 @@ public class EmailBroadcastProcessorService extends IntentService {
      */
     private void onBootCompleted() {
         performOneTimeInitialization();
+        reconcileAndStartServices();
+    }
 
-        enableComponentsIfNecessary();
-
-        // Starts the service for Exchange, if supported.
-        EmailServiceUtils.startExchangeService(this);
+    private void reconcileAndStartServices() {
+        /**
+         *  We can get here before the ACTION_UPGRADE_BROADCAST is received, so make sure the
+         *  accounts are converted otherwise terrible, horrible things will happen.
+         */
+        onAppUpgrade();
+        // Reconcile accounts
+        AccountReconciler.reconcileAccounts(this);
+        // Starts remote services, if any
+        EmailServiceUtils.startRemoteServices(this);
     }
 
     private void performOneTimeInitialization() {
@@ -153,7 +295,7 @@ public class EmailBroadcastProcessorService extends IntentService {
         final int initialProgress = progress;
 
         if (progress < 1) {
-            Log.i(Logging.LOG_TAG, "Onetime initialization: 1");
+            LogUtils.i(Logging.LOG_TAG, "Onetime initialization: 1");
             progress = 1;
             if (VendorPolicyLoader.getInstance(this).useAlternateExchangeStrings()) {
                 setComponentEnabled(EasAuthenticatorServiceAlternate.class, true);
@@ -162,7 +304,7 @@ public class EmailBroadcastProcessorService extends IntentService {
         }
 
         if (progress < 2) {
-            Log.i(Logging.LOG_TAG, "Onetime initialization: 2");
+            LogUtils.i(Logging.LOG_TAG, "Onetime initialization: 2");
             progress = 2;
             setImapDeletePolicy(this);
         }
@@ -174,7 +316,7 @@ public class EmailBroadcastProcessorService extends IntentService {
 
         if (progress != initialProgress) {
             pref.setOneTimeInitializationProgress(progress);
-            Log.i(Logging.LOG_TAG, "Onetime initialization: completed.");
+            LogUtils.i(Logging.LOG_TAG, "Onetime initialization: completed.");
         }
     }
 
@@ -190,7 +332,8 @@ public class EmailBroadcastProcessorService extends IntentService {
             while (c.moveToNext()) {
                 long recvAuthKey = c.getLong(Account.CONTENT_HOST_AUTH_KEY_RECV_COLUMN);
                 HostAuth recvAuth = HostAuth.restoreHostAuthWithId(context, recvAuthKey);
-                if (HostAuth.SCHEME_IMAP.equals(recvAuth.mProtocol)) {
+                String legacyImapProtocol = context.getString(R.string.protocol_legacy_imap);
+                if (legacyImapProtocol.equals(recvAuth.mProtocol)) {
                     int flags = c.getInt(Account.CONTENT_FLAGS_COLUMN);
                     flags &= ~Account.FLAGS_DELETE_POLICY_MASK;
                     flags |= Account.DELETE_POLICY_ON_DELETE << Account.FLAGS_DELETE_POLICY_SHIFT;
@@ -215,11 +358,7 @@ public class EmailBroadcastProcessorService extends IntentService {
     }
 
     private void onSystemAccountChanged() {
-        Log.i(Logging.LOG_TAG, "System accounts updated.");
-        MailService.reconcilePopImapAccountsSync(this);
-
-        // If the exchange service wasn't already running, starting it will cause exchange account
-        // reconciliation to be performed.  The service stops itself it there are no EAS accounts.
-        EmailServiceUtils.startExchangeService(this);
+        LogUtils.i(Logging.LOG_TAG, "System accounts updated.");
+        reconcileAndStartServices();
     }
 }

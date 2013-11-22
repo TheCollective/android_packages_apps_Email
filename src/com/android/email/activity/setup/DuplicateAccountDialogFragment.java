@@ -34,6 +34,9 @@ public class DuplicateAccountDialogFragment extends DialogFragment {
     // Argument bundle keys
     private final static String BUNDLE_KEY_ACCOUNT_NAME = "NoteDialogFragment.AccountName";
 
+    // Public no-args constructor needed for fragment re-instantiation
+    public DuplicateAccountDialogFragment() {}
+
     /**
      * Create the dialog with parameters
      */
@@ -58,6 +61,7 @@ public class DuplicateAccountDialogFragment extends DialogFragment {
             .setPositiveButton(
                     R.string.okay_action,
                     new DialogInterface.OnClickListener() {
+                        @Override
                         public void onClick(DialogInterface dialog, int which) {
                             dismiss();
                         }

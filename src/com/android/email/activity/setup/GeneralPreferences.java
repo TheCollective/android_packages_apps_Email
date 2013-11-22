@@ -16,77 +16,102 @@
 
 package com.android.email.activity.setup;
 
-import android.content.SharedPreferences;
+import android.content.ContentResolver;
 import android.os.Bundle;
+import android.preference.CheckBoxPreference;
 import android.preference.ListPreference;
-import android.preference.MultiSelectListPreference;
 import android.preference.Preference;
-import android.preference.PreferenceCategory;
 import android.preference.Preference.OnPreferenceChangeListener;
 import android.preference.PreferenceFragment;
 import android.preference.PreferenceScreen;
-import android.widget.Toast;
+import android.text.TextUtils;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 
 import com.android.email.Preferences;
 import com.android.email.R;
-import com.android.email.activity.UiUtilities;
-import com.android.emailcommon.utility.AttachmentUtilities;
+import com.android.email.provider.EmailProvider;
+import com.android.mail.preferences.MailPrefs;
+import com.android.mail.ui.settings.ClearPictureApprovalsDialogFragment;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-
-public class GeneralPreferences extends PreferenceFragment implements OnPreferenceChangeListener  {
-
-    private static final String PREFERENCE_CATEGORY_KEY = "category_general_preferences";
+public class GeneralPreferences extends PreferenceFragment implements
+        OnPreferenceChangeListener {
 
     private static final String PREFERENCE_KEY_AUTO_ADVANCE = "auto_advance";
     private static final String PREFERENCE_KEY_TEXT_ZOOM = "text_zoom";
-    private static final String PREFERENCE_KEY_REPLY_ALL = Preferences.REPLY_ALL;
-    private static final String PREFERENCE_KEY_CLEAR_TRUSTED_SENDERS = "clear_trusted_senders";
+    private static final String PREFERENCE_KEY_CONFIRM_DELETE = "confirm_delete";
+    private static final String PREFERENCE_KEY_CONFIRM_SEND = "confirm_send";
+    private static final String PREFERENCE_KEY_CONV_LIST_ICON = "conversation_list_icon";
 
-    private static final String PREFERENCE_KEY_BLOCKED_ATTACHMENT_EXTENSIONS =
-                                     "blocked_attachment_extensions";
-
+    private MailPrefs mMailPrefs;
     private Preferences mPreferences;
     private ListPreference mAutoAdvance;
+    /**
+     * TODO: remove this when we've decided for certain that an app setting is unnecessary
+     * (b/5287963)
+     */
+    @Deprecated
     private ListPreference mTextZoom;
-    private MultiSelectListPreference mBlockedAttachmentExtensions;
+    private CheckBoxPreference mConfirmDelete;
+    private CheckBoxPreference mConfirmSend;
+    //private CheckBoxPreference mConvListAttachmentPreviews;
+    private CheckBoxPreference mSwipeDelete;
+
+    private boolean mSettingsChanged = false;
 
     CharSequence[] mSizeSummaries;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setHasOptionsMenu(true);
 
+        mMailPrefs = MailPrefs.get(getActivity());
         getPreferenceManager().setSharedPreferencesName(Preferences.PREFERENCES_FILE);
 
         // Load the preferences from an XML resource
         addPreferencesFromResource(R.xml.general_preferences);
 
-        if (UiUtilities.useTwoPane(getActivity())) {
-            // "Reply All" should only be shown on phones
-            PreferenceCategory pc = (PreferenceCategory) findPreference(PREFERENCE_CATEGORY_KEY);
-            pc.removePreference(findPreference(PREFERENCE_KEY_REPLY_ALL));
-        }
+        final PreferenceScreen ps = getPreferenceScreen();
+        // Merely hide app pref for font size until we're sure it's unnecessary (b/5287963)
+        ps.removePreference(findPreference(PREFERENCE_KEY_TEXT_ZOOM));
     }
 
     @Override
     public void onResume() {
         loadSettings();
+        mSettingsChanged = false;
         super.onResume();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (mSettingsChanged) {
+            // Notify the account list that we have changes
+            ContentResolver resolver = getActivity().getContentResolver();
+            resolver.notifyChange(EmailProvider.UIPROVIDER_ALL_ACCOUNTS_NOTIFIER, null);
+        }
     }
 
     @Override
     public boolean onPreferenceChange(Preference preference, Object newValue) {
         String key = preference.getKey();
-
+        // Indicate we need to send notifications to UI
+        mSettingsChanged = true;
         if (PREFERENCE_KEY_AUTO_ADVANCE.equals(key)) {
             mPreferences.setAutoAdvanceDirection(mAutoAdvance.findIndexOfValue((String) newValue));
             return true;
         } else if (PREFERENCE_KEY_TEXT_ZOOM.equals(key)) {
             mPreferences.setTextZoom(mTextZoom.findIndexOfValue((String) newValue));
             reloadDynamicSummaries();
+            return true;
+        } else if (MailPrefs.PreferenceKeys.DEFAULT_REPLY_ALL.equals(key)) {
+            mMailPrefs.setDefaultReplyAll((Boolean) newValue);
+            return true;
+        } else if (PREFERENCE_KEY_CONV_LIST_ICON.equals(key)) {
+            mMailPrefs.setShowSenderImages((Boolean) newValue);
             return true;
         }
         return false;
@@ -98,15 +123,18 @@ public class GeneralPreferences extends PreferenceFragment implements OnPreferen
             // Guard against monkeys.
             return false;
         }
-
+        mSettingsChanged = true;
         String key = preference.getKey();
-        if (key.equals(PREFERENCE_KEY_CLEAR_TRUSTED_SENDERS)) {
-            mPreferences.clearTrustedSenders();
-            Toast.makeText(
-                    getActivity(), R.string.trusted_senders_cleared, Toast.LENGTH_SHORT).show();
+        if (PREFERENCE_KEY_CONFIRM_DELETE.equals(key)) {
+            mPreferences.setConfirmDelete(mConfirmDelete.isChecked());
+            return true;
+        } else if (PREFERENCE_KEY_CONFIRM_SEND.equals(key)) {
+            mPreferences.setConfirmSend(mConfirmSend.isChecked());
+            return true;
+        } else if (MailPrefs.PreferenceKeys.CONVERSATION_LIST_SWIPE.equals(key)) {
+            mMailPrefs.setConversationListSwipeEnabled(mSwipeDelete.isChecked());
             return true;
         }
-
         return false;
     }
 
@@ -117,19 +145,29 @@ public class GeneralPreferences extends PreferenceFragment implements OnPreferen
         mAutoAdvance.setOnPreferenceChangeListener(this);
 
         mTextZoom = (ListPreference) findPreference(PREFERENCE_KEY_TEXT_ZOOM);
-        mTextZoom.setValueIndex(mPreferences.getTextZoom());
-        mTextZoom.setOnPreferenceChangeListener(this);
+        if (mTextZoom != null) {
+            mTextZoom.setValueIndex(mPreferences.getTextZoom());
+            mTextZoom.setOnPreferenceChangeListener(this);
+        }
 
-        mBlockedAttachmentExtensions =
-                (MultiSelectListPreference) findPreference(
-                        PREFERENCE_KEY_BLOCKED_ATTACHMENT_EXTENSIONS);
-        mBlockedAttachmentExtensions.setEntries(
-                AttachmentUtilities.UNACCEPTABLE_ATTACHMENT_EXTENSIONS);
-        mBlockedAttachmentExtensions.setEntryValues(
-                AttachmentUtilities.UNACCEPTABLE_ATTACHMENT_EXTENSIONS);
-        mBlockedAttachmentExtensions.setDefaultValue(
-                AttachmentUtilities.UNACCEPTABLE_ATTACHMENT_EXTENSIONS);
-        checkBlockedAttachmentExtensions();
+        final CheckBoxPreference convListIcon =
+                (CheckBoxPreference) findPreference(PREFERENCE_KEY_CONV_LIST_ICON);
+        if (convListIcon != null) {
+            final boolean showSenderImage = mMailPrefs.getShowSenderImages();
+            convListIcon.setChecked(showSenderImage);
+            convListIcon.setOnPreferenceChangeListener(this);
+        }
+
+        mConfirmDelete = (CheckBoxPreference) findPreference(PREFERENCE_KEY_CONFIRM_DELETE);
+        mConfirmSend = (CheckBoxPreference) findPreference(PREFERENCE_KEY_CONFIRM_SEND);
+        mSwipeDelete = (CheckBoxPreference)
+                findPreference(MailPrefs.PreferenceKeys.CONVERSATION_LIST_SWIPE);
+        mSwipeDelete.setChecked(mMailPrefs.getIsConversationListSwipeEnabled());
+
+        final CheckBoxPreference replyAllPreference =
+                (CheckBoxPreference) findPreference(MailPrefs.PreferenceKeys.DEFAULT_REPLY_ALL);
+        replyAllPreference.setChecked(mMailPrefs.getDefaultReplyAll());
+        replyAllPreference.setOnPreferenceChangeListener(this);
 
         reloadDynamicSummaries();
     }
@@ -138,38 +176,43 @@ public class GeneralPreferences extends PreferenceFragment implements OnPreferen
      * Reload any preference summaries that are updated dynamically
      */
     private void reloadDynamicSummaries() {
-        int textZoomIndex = mPreferences.getTextZoom();
-        // Update summary - but only load the array once
-        if (mSizeSummaries == null) {
-            mSizeSummaries = getActivity().getResources()
-                    .getTextArray(R.array.general_preference_text_zoom_summary_array);
+        if (mTextZoom != null) {
+            int textZoomIndex = mPreferences.getTextZoom();
+            // Update summary - but only load the array once
+            if (mSizeSummaries == null) {
+                mSizeSummaries = getActivity().getResources()
+                        .getTextArray(R.array.general_preference_text_zoom_summary_array);
+            }
+            CharSequence summary = null;
+            if (textZoomIndex >= 0 && textZoomIndex < mSizeSummaries.length) {
+                summary = mSizeSummaries[textZoomIndex];
+            }
+            mTextZoom.setSummary(summary);
         }
-        CharSequence summary = null;
-        if (textZoomIndex >= 0 && textZoomIndex < mSizeSummaries.length) {
-            summary = mSizeSummaries[textZoomIndex];
-        }
-        mTextZoom.setSummary(summary);
     }
 
-    /**
-     * Check all the extensions as blocked if there isn't an user selection
-     */
-    private void checkBlockedAttachmentExtensions() {
-        SharedPreferences prefs = getPreferenceManager().getSharedPreferences();
-        final String NOEXT = ".noextension";
-        Set<String> daeDefSet = new HashSet<String>();
-        daeDefSet.add(NOEXT);
-        Set<String> daeSet =
-                prefs.getStringSet(
-                            PREFERENCE_KEY_BLOCKED_ATTACHMENT_EXTENSIONS,
-                            daeDefSet);
-        String[] dae = daeSet.toArray(new String[daeSet.size()]);
-        if (dae.length == 1 && dae[0].compareTo(NOEXT) == 0) {
-            // Put all the extensions as blocked
-            Set<String> values =
-                    new HashSet<String>(
-                            Arrays.asList(AttachmentUtilities.UNACCEPTABLE_ATTACHMENT_EXTENSIONS));
-            mBlockedAttachmentExtensions.setValues(values);
-        }
+    @Override
+    public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+        menu.clear();
+        inflater.inflate(R.menu.general_prefs_fragment_menu, menu);
     }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.clear_picture_approvals_menu_item:
+                clearDisplayImages();
+                return true;
+        }
+
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void clearDisplayImages() {
+        final ClearPictureApprovalsDialogFragment fragment =
+                ClearPictureApprovalsDialogFragment.newInstance();
+        fragment.show(getActivity().getFragmentManager(),
+                ClearPictureApprovalsDialogFragment.FRAGMENT_TAG);
+    }
+
 }

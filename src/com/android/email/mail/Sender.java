@@ -18,13 +18,13 @@ package com.android.email.mail;
 
 import android.content.Context;
 import android.content.res.XmlResourceParser;
-import android.util.Log;
 
 import com.android.email.R;
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.mail.MessagingException;
 import com.android.emailcommon.provider.Account;
 import com.android.emailcommon.provider.HostAuth;
+import com.android.mail.utils.LogUtils;
 
 import org.xmlpull.v1.XmlPullParserException;
 
@@ -37,8 +37,7 @@ public abstract class Sender {
      * Static named constructor.  It should be overrode by extending class.
      * Because this method will be called through reflection, it can not be protected.
      */
-    public static Sender newInstance(Context context, Account account)
-            throws MessagingException {
+    public static Sender newInstance(Account account) throws MessagingException {
         throw new MessagingException("Sender.newInstance: Unknown scheme in "
                 + account.mDisplayName);
     }
@@ -53,7 +52,7 @@ public abstract class Sender {
                 c.getMethod("newInstance", Account.class, Context.class);
             o = m.invoke(null, account, context);
         } catch (Exception e) {
-            Log.d(Logging.LOG_TAG, String.format(
+            LogUtils.d(Logging.LOG_TAG, String.format(
                     "exception %s invoking method %s#newInstance(Account, Context) for %s",
                     e.toString(), className, account.mDisplayName));
             throw new MessagingException("can not instantiate Sender for " + account.mDisplayName);

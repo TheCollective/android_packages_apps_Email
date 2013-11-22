@@ -21,7 +21,6 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
-import android.util.Log;
 
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.internet.MimeBodyPart;
@@ -41,6 +40,8 @@ import com.android.emailcommon.provider.EmailContent.Attachment;
 import com.android.emailcommon.provider.EmailContent.AttachmentColumns;
 import com.android.emailcommon.provider.Mailbox;
 import com.android.emailcommon.utility.AttachmentUtilities;
+import com.android.mail.providers.UIProvider;
+import com.android.mail.utils.LogUtils;
 
 import org.apache.commons.io.IOUtils;
 
@@ -184,7 +185,7 @@ public class LegacyConversions {
      * @param part a single attachment part from POP or IMAP
      * @throws IOException
      */
-    private static void addOneAttachment(Context context, EmailContent.Message localMessage,
+    public static void addOneAttachment(Context context, EmailContent.Message localMessage,
             Part part) throws MessagingException, IOException {
 
         Attachment localAttachment = new Attachment();
@@ -212,18 +213,21 @@ public class LegacyConversions {
         String[] partIds = part.getHeader(MimeHeader.HEADER_ANDROID_ATTACHMENT_STORE_DATA);
         String partId = partIds != null ? partIds[0] : null;
 
+        // Run the mime type through inferMimeType in case we have something generic and can do
+        // better using the filename extension
+        String mimeType = AttachmentUtilities.inferMimeType(name, part.getMimeType());
+        localAttachment.mMimeType = mimeType;
         localAttachment.mFileName = name;
-        localAttachment.mMimeType = part.getMimeType();
         localAttachment.mSize = size;           // May be reset below if file handled
         localAttachment.mContentId = part.getContentId();
-        localAttachment.mContentUri = null;     // Will be rewritten by saveAttachmentBody
+        localAttachment.setContentUri(null);     // Will be rewritten by saveAttachmentBody
         localAttachment.mMessageKey = localMessage.mId;
         localAttachment.mLocation = partId;
         localAttachment.mEncoding = "B";        // TODO - convert other known encodings
         localAttachment.mAccountKey = localMessage.mAccountKey;
 
         if (DEBUG_ATTACHMENTS) {
-            Log.d(Logging.LOG_TAG, "Add attachment " + localAttachment);
+            LogUtils.d(Logging.LOG_TAG, "Add attachment " + localAttachment);
         }
 
         // To prevent duplication - do we already have a matching attachment?
@@ -249,7 +253,7 @@ public class LegacyConversions {
                 attachmentFoundInDb = true;
                 localAttachment.mId = dbAttachment.mId;
                 if (DEBUG_ATTACHMENTS) {
-                    Log.d(Logging.LOG_TAG, "Skipped, found db attachment " + dbAttachment);
+                    LogUtils.d(Logging.LOG_TAG, "Skipped, found db attachment " + dbAttachment);
                 }
                 break;
             }
@@ -310,12 +314,13 @@ public class LegacyConversions {
                     accountId, attachmentId).toString();
 
             localAttachment.mSize = copySize;
-            localAttachment.mContentUri = contentUriString;
+            localAttachment.setContentUri(contentUriString);
 
             // update the attachment in the database as well
             ContentValues cv = new ContentValues();
             cv.put(AttachmentColumns.SIZE, copySize);
             cv.put(AttachmentColumns.CONTENT_URI, contentUriString);
+            cv.put(AttachmentColumns.UI_STATE, UIProvider.AttachmentState.SAVED);
             Uri uri = ContentUris.withAppendedId(Attachment.CONTENT_URI, attachmentId);
             context.getContentResolver().update(uri, cv, null, null);
         }
@@ -359,14 +364,14 @@ public class LegacyConversions {
             addTextBodyPart(mp, "text/html", null,
                     EmailContent.Body.restoreBodyHtmlWithMessageId(context, localMessage.mId));
         } catch (RuntimeException rte) {
-            Log.d(Logging.LOG_TAG, "Exception while reading html body " + rte.toString());
+            LogUtils.d(Logging.LOG_TAG, "Exception while reading html body " + rte.toString());
         }
 
         try {
             addTextBodyPart(mp, "text/plain", null,
                     EmailContent.Body.restoreBodyTextWithMessageId(context, localMessage.mId));
         } catch (RuntimeException rte) {
-            Log.d(Logging.LOG_TAG, "Exception while reading text body " + rte.toString());
+            LogUtils.d(Logging.LOG_TAG, "Exception while reading text body " + rte.toString());
         }
 
         boolean isReply = (localMessage.mFlags & EmailContent.Message.FLAG_TYPE_REPLY) != 0;
@@ -380,7 +385,7 @@ public class LegacyConversions {
                 addTextBodyPart(mp, "text/plain", BODY_QUOTED_PART_INTRO,
                         EmailContent.Body.restoreIntroTextWithMessageId(context, localMessage.mId));
             } catch (RuntimeException rte) {
-                Log.d(Logging.LOG_TAG, "Exception while reading text reply " + rte.toString());
+                LogUtils.d(Logging.LOG_TAG, "Exception while reading text reply " + rte.toString());
             }
 
             String replyTag = isReply ? BODY_QUOTED_PART_REPLY : BODY_QUOTED_PART_FORWARD;
@@ -388,14 +393,14 @@ public class LegacyConversions {
                 addTextBodyPart(mp, "text/html", replyTag,
                         EmailContent.Body.restoreReplyHtmlWithMessageId(context, localMessage.mId));
             } catch (RuntimeException rte) {
-                Log.d(Logging.LOG_TAG, "Exception while reading html reply " + rte.toString());
+                LogUtils.d(Logging.LOG_TAG, "Exception while reading html reply " + rte.toString());
             }
 
             try {
                 addTextBodyPart(mp, "text/plain", replyTag,
                         EmailContent.Body.restoreReplyTextWithMessageId(context, localMessage.mId));
             } catch (RuntimeException rte) {
-                Log.d(Logging.LOG_TAG, "Exception while reading text reply " + rte.toString());
+                LogUtils.d(Logging.LOG_TAG, "Exception while reading text reply " + rte.toString());
             }
         }
 

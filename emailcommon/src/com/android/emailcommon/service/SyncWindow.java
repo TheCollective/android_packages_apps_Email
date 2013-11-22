@@ -17,13 +17,32 @@
 package com.android.emailcommon.service;
 
 public class SyncWindow {
-    public static final int SYNC_WINDOW_AUTO = -2;
     public static final int SYNC_WINDOW_USER = -1;
-    public static final int SYNC_WINDOW_UNKNOWN = 0;
+    public static final int SYNC_WINDOW_ACCOUNT = 0;
     public static final int SYNC_WINDOW_1_DAY = 1;
     public static final int SYNC_WINDOW_3_DAYS = 2;
     public static final int SYNC_WINDOW_1_WEEK = 3;
     public static final int SYNC_WINDOW_2_WEEKS = 4;
     public static final int SYNC_WINDOW_1_MONTH = 5;
     public static final int SYNC_WINDOW_ALL = 6;
+
+    public static int toDays(int window) {
+        switch(window) {
+            case SYNC_WINDOW_1_DAY:
+                return 1;
+            case SYNC_WINDOW_3_DAYS:
+                return 3;
+            case SYNC_WINDOW_1_WEEK:
+                return 7;
+            case SYNC_WINDOW_2_WEEKS:
+                return 14;
+            case SYNC_WINDOW_1_MONTH:
+                return 30;
+            case SYNC_WINDOW_ALL:
+                return 365*10;
+            case SYNC_WINDOW_ACCOUNT:
+            default:
+                return 14;
+        }
+    }
 }

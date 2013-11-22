@@ -17,28 +17,144 @@
 
 package com.android.emailcommon.provider;
 
+import android.content.ContentProviderOperation;
+import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.OperationApplicationException;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
-import android.util.Log;
+import android.os.RemoteException;
+import android.provider.CalendarContract;
+import android.provider.ContactsContract;
+import android.text.TextUtils;
+import android.util.SparseBooleanArray;
 
 import com.android.emailcommon.Logging;
+import com.android.emailcommon.R;
 import com.android.emailcommon.provider.EmailContent.MailboxColumns;
-import com.android.emailcommon.provider.EmailContent.SyncColumns;
 import com.android.emailcommon.utility.Utility;
+import com.android.mail.utils.LogUtils;
 
-public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns, Parcelable {
+import java.util.ArrayList;
+
+public class Mailbox extends EmailContent implements MailboxColumns, Parcelable {
+    /**
+     * Sync extras key when syncing one or more mailboxes to specify how many
+     * mailboxes are included in the extra.
+     */
+    public static final String SYNC_EXTRA_MAILBOX_COUNT = "__mailboxCount__";
+    /**
+     * Sync extras key pattern when syncing one or more mailboxes to specify
+     * which mailbox to sync. Is intentionally private, we have helper functions
+     * to set up an appropriate bundle, or read its contents.
+     */
+    private static final String SYNC_EXTRA_MAILBOX_ID_PATTERN = "__mailboxId%d__";
+    /**
+     * Sync extra key indicating that we are doing a sync of the folder structure for an account.
+     */
+    public static final String SYNC_EXTRA_ACCOUNT_ONLY = "__account_only__";
+    /**
+     * Sync extra key indicating that we are only starting a ping.
+     */
+    public static final String SYNC_EXTRA_PUSH_ONLY = "__push_only__";
+
+    /**
+     * Sync extras key to specify that only a specific mailbox type should be synced.
+     */
+    public static final String SYNC_EXTRA_MAILBOX_TYPE = "__mailboxType__";
+    /**
+     * Sync extras key when syncing a mailbox to specify how many additional messages to sync.
+     */
+    public static final String SYNC_EXTRA_DELTA_MESSAGE_COUNT = "__deltaMessageCount__";
+
+    public static final String SYNC_EXTRA_NOOP = "__noop__";
+
     public static final String TABLE_NAME = "Mailbox";
-    @SuppressWarnings("hiding")
-    public static final Uri CONTENT_URI = Uri.parse(EmailContent.CONTENT_URI + "/mailbox");
-    public static final Uri ADD_TO_FIELD_URI =
-        Uri.parse(EmailContent.CONTENT_URI + "/mailboxIdAddToField");
-    public static final Uri FROM_ACCOUNT_AND_TYPE_URI =
-        Uri.parse(EmailContent.CONTENT_URI + "/mailboxIdFromAccountAndType");
+
+
+    public static Uri CONTENT_URI;
+    public static Uri MESSAGE_COUNT_URI;
+
+    public static void initMailbox() {
+        CONTENT_URI = Uri.parse(EmailContent.CONTENT_URI + "/mailbox");
+        MESSAGE_COUNT_URI = Uri.parse(EmailContent.CONTENT_URI + "/mailboxCount");
+    }
+
+    private static String formatMailboxIdExtra(final int index) {
+        return String.format(SYNC_EXTRA_MAILBOX_ID_PATTERN, index);
+    }
+
+    public static Bundle createSyncBundle(final ArrayList<Long> mailboxIds) {
+        Bundle bundle = new Bundle();
+        bundle.putInt(SYNC_EXTRA_MAILBOX_COUNT, mailboxIds.size());
+        for (int i = 0; i < mailboxIds.size(); i++) {
+            bundle.putLong(formatMailboxIdExtra(i), mailboxIds.get(i));
+        }
+        return bundle;
+    }
+
+    public static Bundle createSyncBundle(final long[] mailboxIds) {
+        Bundle bundle = new Bundle();
+        bundle.putInt(SYNC_EXTRA_MAILBOX_COUNT, mailboxIds.length);
+        for (int i = 0; i < mailboxIds.length; i++) {
+            bundle.putLong(formatMailboxIdExtra(i), mailboxIds[i]);
+        }
+        return bundle;
+    }
+
+    public static Bundle createSyncBundle(final long mailboxId) {
+        Bundle bundle = new Bundle();
+        bundle.putInt(SYNC_EXTRA_MAILBOX_COUNT, 1);
+        bundle.putLong(formatMailboxIdExtra(0), mailboxId);
+        return bundle;
+    }
+
+    public static long[] getMailboxIdsFromBundle(Bundle bundle) {
+        final int count = bundle.getInt(SYNC_EXTRA_MAILBOX_COUNT, 0);
+        if (count > 0) {
+            if (bundle.getBoolean(SYNC_EXTRA_PUSH_ONLY, false)) {
+                LogUtils.w(Logging.LOG_TAG, "Mailboxes specified in a push only sync");
+            }
+            if (bundle.getBoolean(SYNC_EXTRA_ACCOUNT_ONLY, false)) {
+                LogUtils.w(Logging.LOG_TAG, "Mailboxes specified in an account only sync");
+            }
+            long [] result = new long[count];
+            for (int i = 0; i < count; i++) {
+                result[i] = bundle.getLong(formatMailboxIdExtra(i), 0);
+            }
+
+            return result;
+        } else {
+            return null;
+        }
+    }
+
+    public static boolean isAccountOnlyExtras(Bundle bundle) {
+        final boolean result = bundle.getBoolean(SYNC_EXTRA_ACCOUNT_ONLY, false);
+        if (result) {
+            final int count = bundle.getInt(SYNC_EXTRA_MAILBOX_COUNT, 0);
+            if (count != 0) {
+                LogUtils.w(Logging.LOG_TAG, "Mailboxes specified in an account only sync");
+            }
+        }
+        return result;
+    }
+
+    public static boolean isPushOnlyExtras(Bundle bundle) {
+        final boolean result = bundle.getBoolean(SYNC_EXTRA_PUSH_ONLY, false);
+        if (result) {
+            final int count = bundle.getInt(SYNC_EXTRA_MAILBOX_COUNT, 0);
+            if (count != 0) {
+                LogUtils.w(Logging.LOG_TAG, "Mailboxes specified in a push only sync");
+            }
+        }
+        return result;
+    }
 
     public String mDisplayName;
     public String mServerId;
@@ -53,15 +169,13 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
     public long mSyncTime;
     public boolean mFlagVisible = true;
     public int mFlags;
-    public int mVisibleLimit;
     public String mSyncStatus;
     public long mLastTouchedTime;
     public int mUiSyncStatus;
     public int mUiLastSyncResult;
-    public long mLastNotifiedMessageKey;
-    public int mLastNotifiedMessageCount;
     public int mTotalCount;
-    public long mLastSeenMessageKey;
+    public String mHierarchicalName;
+    public long mLastFullSyncTime;
 
     public static final int CONTENT_ID_COLUMN = 0;
     public static final int CONTENT_DISPLAY_NAME_COLUMN = 1;
@@ -76,16 +190,14 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
     public static final int CONTENT_SYNC_TIME_COLUMN = 10;
     public static final int CONTENT_FLAG_VISIBLE_COLUMN = 11;
     public static final int CONTENT_FLAGS_COLUMN = 12;
-    public static final int CONTENT_VISIBLE_LIMIT_COLUMN = 13;
-    public static final int CONTENT_SYNC_STATUS_COLUMN = 14;
-    public static final int CONTENT_PARENT_KEY_COLUMN = 15;
-    public static final int CONTENT_LAST_TOUCHED_TIME_COLUMN = 16;
-    public static final int CONTENT_UI_SYNC_STATUS_COLUMN = 17;
-    public static final int CONTENT_UI_LAST_SYNC_RESULT_COLUMN = 18;
-    public static final int CONTENT_LAST_NOTIFIED_MESSAGE_KEY_COLUMN = 19;
-    public static final int CONTENT_LAST_NOTIFIED_MESSAGE_COUNT_COLUMN = 20;
-    public static final int CONTENT_TOTAL_COUNT_COLUMN = 21;
-    public static final int CONTENT_LAST_SEEN_MESSAGE_KEY_COLUMN = 22;
+    public static final int CONTENT_SYNC_STATUS_COLUMN = 13;
+    public static final int CONTENT_PARENT_KEY_COLUMN = 14;
+    public static final int CONTENT_LAST_TOUCHED_TIME_COLUMN = 15;
+    public static final int CONTENT_UI_SYNC_STATUS_COLUMN = 16;
+    public static final int CONTENT_UI_LAST_SYNC_RESULT_COLUMN = 17;
+    public static final int CONTENT_TOTAL_COUNT_COLUMN = 18;
+    public static final int CONTENT_HIERARCHICAL_NAME_COLUMN = 19;
+    public static final int CONTENT_LAST_FULL_SYNC_COLUMN = 20;
 
     /**
      * <em>NOTE</em>: If fields are added or removed, the method {@link #getHashes()}
@@ -95,31 +207,16 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
         RECORD_ID, MailboxColumns.DISPLAY_NAME, MailboxColumns.SERVER_ID,
         MailboxColumns.PARENT_SERVER_ID, MailboxColumns.ACCOUNT_KEY, MailboxColumns.TYPE,
         MailboxColumns.DELIMITER, MailboxColumns.SYNC_KEY, MailboxColumns.SYNC_LOOKBACK,
-        MailboxColumns.SYNC_INTERVAL, MailboxColumns.SYNC_TIME,
-        MailboxColumns.FLAG_VISIBLE, MailboxColumns.FLAGS, MailboxColumns.VISIBLE_LIMIT,
-        MailboxColumns.SYNC_STATUS, MailboxColumns.PARENT_KEY, MailboxColumns.LAST_TOUCHED_TIME,
-        MailboxColumns.UI_SYNC_STATUS, MailboxColumns.UI_LAST_SYNC_RESULT,
-        MailboxColumns.LAST_NOTIFIED_MESSAGE_KEY, MailboxColumns.LAST_NOTIFIED_MESSAGE_COUNT,
-        MailboxColumns.TOTAL_COUNT, MailboxColumns.LAST_SEEN_MESSAGE_KEY
+        MailboxColumns.SYNC_INTERVAL, MailboxColumns.SYNC_TIME, MailboxColumns.FLAG_VISIBLE,
+        MailboxColumns.FLAGS, MailboxColumns.SYNC_STATUS, MailboxColumns.PARENT_KEY,
+        MailboxColumns.LAST_TOUCHED_TIME, MailboxColumns.UI_SYNC_STATUS,
+        MailboxColumns.UI_LAST_SYNC_RESULT, MailboxColumns.TOTAL_COUNT,
+        MailboxColumns.HIERARCHICAL_NAME, MailboxColumns.LAST_FULL_SYNC_TIME
     };
 
-    private static final String ACCOUNT_AND_MAILBOX_TYPE_SELECTION =
-            MailboxColumns.ACCOUNT_KEY + " =? AND " +
-            MailboxColumns.TYPE + " =?";
-    private static final String MAILBOX_TYPE_SELECTION =
-            MailboxColumns.TYPE + " =?";
     /** Selection by server pathname for a given account */
     public static final String PATH_AND_ACCOUNT_SELECTION =
         MailboxColumns.SERVER_ID + "=? and " + MailboxColumns.ACCOUNT_KEY + "=?";
-
-    private static final String[] MAILBOX_SUM_OF_UNREAD_COUNT_PROJECTION = new String [] {
-            "sum(" + MailboxColumns.UNREAD_COUNT + ")"
-            };
-    private static final int UNREAD_COUNT_COUNT_COLUMN = 0;
-    private static final String[] MAILBOX_SUM_OF_MESSAGE_COUNT_PROJECTION = new String [] {
-            "sum(" + MailboxColumns.MESSAGE_COUNT + ")"
-            };
-    private static final int MESSAGE_COUNT_COUNT_COLUMN = 0;
 
     private static final String[] MAILBOX_TYPE_PROJECTION = new String [] {
             MailboxColumns.TYPE
@@ -131,15 +228,37 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
             };
     private static final int MAILBOX_DISPLAY_NAME_COLUMN = 0;
 
+    /**
+     * Projection to use when reading {@link MailboxColumns#ACCOUNT_KEY} for a mailbox.
+     */
+    private static final String[] ACCOUNT_KEY_PROJECTION = { MailboxColumns.ACCOUNT_KEY };
+    private static final int ACCOUNT_KEY_PROJECTION_ACCOUNT_KEY_COLUMN = 0;
+
+    /**
+     * Projection for querying data needed during a sync.
+     */
+    public interface ProjectionSyncData {
+        public static final int COLUMN_SERVER_ID = 0;
+        public static final int COLUMN_SYNC_KEY = 1;
+
+        public static final String[] PROJECTION = {
+                MailboxColumns.SERVER_ID, MailboxColumns.SYNC_KEY
+        };
+    };
+
     public static final long NO_MAILBOX = -1;
 
     // Sentinel values for the mSyncInterval field of both Mailbox records
+    @Deprecated
     public static final int CHECK_INTERVAL_NEVER = -1;
+    @Deprecated
     public static final int CHECK_INTERVAL_PUSH = -2;
     // The following two sentinel values are used by EAS
     // Ping indicates that the EAS mailbox is synced based on a "ping" from the server
+    @Deprecated
     public static final int CHECK_INTERVAL_PING = -3;
     // Push-Hold indicates an EAS push or ping Mailbox shouldn't sync just yet
+    @Deprecated
     public static final int CHECK_INTERVAL_PUSH_HOLD = -4;
 
     // Sentinel for PARENT_KEY.  Use NO_MAILBOX for toplevel mailboxes (i.e. no parents).
@@ -154,6 +273,25 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
     public static final String USER_VISIBLE_MAILBOX_SELECTION =
         MailboxColumns.TYPE + "<" + Mailbox.TYPE_NOT_EMAIL +
         " AND " + MailboxColumns.FLAG_VISIBLE + "=1";
+
+    /**
+     * Selection for mailboxes that should receive push for an account. A mailbox should receive
+     * push if it has a valid, non-initial sync key and is opted in for sync.
+     */
+    private static final String PUSH_MAILBOXES_FOR_ACCOUNT_SELECTION =
+            MailboxColumns.SYNC_KEY + " is not null and " + MailboxColumns.SYNC_KEY + "!='' and " +
+                    MailboxColumns.SYNC_KEY + "!='0' and " + MailboxColumns.SYNC_INTERVAL +
+                    "=1 and " + MailboxColumns.ACCOUNT_KEY + "=?";
+
+    /** Selection for mailboxes that say they want to sync, plus outbox, for an account. */
+    private static final String OUTBOX_PLUS_SYNCING_AND_ACCOUNT_SELECTION = "("
+            + MailboxColumns.TYPE + "=" + Mailbox.TYPE_OUTBOX + " or "
+            + MailboxColumns.SYNC_INTERVAL + "=1) and " + MailboxColumns.ACCOUNT_KEY + "=?";
+
+    /** Selection for mailboxes that are configured for sync of a certain type for an account. */
+    private static final String SYNCING_AND_TYPE_FOR_ACCOUNT_SELECTION =
+            MailboxColumns.SYNC_INTERVAL + "=1 and " + MailboxColumns.TYPE + "=? and " +
+                    MailboxColumns.ACCOUNT_KEY + "=?";
 
     // Types of mailboxes.  The list is ordered to match a typical UI presentation, e.g.
     // placing the inbox at the top.
@@ -180,20 +318,59 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
     public static final int TYPE_JUNK = 7;
     /** Search results */
     public static final int TYPE_SEARCH = 8;
-    /** Starred (virtual */
+    /** Starred (virtual) */
     public static final int TYPE_STARRED = 9;
+    /** All unread mail (virtual) */
+    public static final int TYPE_UNREAD = 10;
 
     // Types after this are used for non-mail mailboxes (as in EAS)
     public static final int TYPE_NOT_EMAIL = 0x40;
     public static final int TYPE_CALENDAR = 0x41;
     public static final int TYPE_CONTACTS = 0x42;
     public static final int TYPE_TASKS = 0x43;
+    @Deprecated
     public static final int TYPE_EAS_ACCOUNT_MAILBOX = 0x44;
     public static final int TYPE_UNKNOWN = 0x45;
+
+    /**
+     * Specifies which mailbox types may be synced from server, and what the default sync interval
+     * value should be.
+     * If a mailbox type is in this array, then it can be synced.
+     * If the mailbox type is mapped to true in this array, then new mailboxes of that type should
+     * be set to automatically sync (either with the periodic poll, or with push, as determined
+     * by the account's sync settings).
+     * See {@link #isSyncableType} and {@link #getDefaultSyncStateForType} for how to access this
+     * data.
+     */
+    private static final SparseBooleanArray SYNCABLE_TYPES;
+    static {
+        SYNCABLE_TYPES = new SparseBooleanArray(7);
+        SYNCABLE_TYPES.put(TYPE_INBOX, true);
+        SYNCABLE_TYPES.put(TYPE_MAIL, false);
+        // TODO: b/11158759
+        // For now, drafts folders are not syncable.
+        //SYNCABLE_TYPES.put(TYPE_DRAFTS, true);
+        SYNCABLE_TYPES.put(TYPE_SENT, true);
+        SYNCABLE_TYPES.put(TYPE_TRASH, false);
+        SYNCABLE_TYPES.put(TYPE_CALENDAR, true);
+        SYNCABLE_TYPES.put(TYPE_CONTACTS, true);
+    }
 
     public static final int TYPE_NOT_SYNCABLE = 0x100;
     // A mailbox that holds Messages that are attachments
     public static final int TYPE_ATTACHMENT = 0x101;
+
+    /**
+     * For each of the following folder types, we expect there to be exactly one folder of that
+     * type per account.
+     * Each sync adapter must do the following:
+     * 1) On initial sync: For each type that was not found from the server, create a local folder.
+     * 2) On folder delete: If it's of a required type, convert it to local rather than delete.
+     * 3) On folder add: If it's of a required type, convert the local folder to server.
+     * 4) When adding a duplicate (either initial sync or folder add): Error.
+     */
+    public static final int[] REQUIRED_FOLDER_TYPES =
+            { TYPE_INBOX, TYPE_DRAFTS, TYPE_OUTBOX, TYPE_SENT, TYPE_TRASH };
 
     // Default "touch" time for system mailboxes
     public static final int DRAFTS_DEFAULT_TOUCH_TIME = 2;
@@ -227,8 +404,46 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
     public static final long QUERY_ALL_DRAFTS = -5;
     public static final long QUERY_ALL_OUTBOX = -6;
 
+    /**
+     * Specifies how many messages will be shown in a folder when it is first synced.
+     */
+    public static final int FIRST_SYNC_MESSAGE_COUNT = 25;
+
     public Mailbox() {
         mBaseUri = CONTENT_URI;
+    }
+
+    public static String getSystemMailboxName(Context context, int mailboxType) {
+        int resId = -1;
+        switch (mailboxType) {
+            case Mailbox.TYPE_INBOX:
+                resId = R.string.mailbox_name_server_inbox;
+                break;
+            case Mailbox.TYPE_OUTBOX:
+                resId = R.string.mailbox_name_server_outbox;
+                break;
+            case Mailbox.TYPE_DRAFTS:
+                resId = R.string.mailbox_name_server_drafts;
+                break;
+            case Mailbox.TYPE_TRASH:
+                resId = R.string.mailbox_name_server_trash;
+                break;
+            case Mailbox.TYPE_SENT:
+                resId = R.string.mailbox_name_server_sent;
+                break;
+            case Mailbox.TYPE_JUNK:
+                resId = R.string.mailbox_name_server_junk;
+                break;
+            case Mailbox.TYPE_STARRED:
+                resId = R.string.mailbox_name_server_starred;
+                break;
+            case Mailbox.TYPE_UNREAD:
+                resId = R.string.mailbox_name_server_all_unread;
+                break;
+            default:
+                throw new IllegalArgumentException("Illegal mailbox type");
+        }
+        return context.getString(resId);
     }
 
      /**
@@ -248,18 +463,40 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
      * system mailboxes synced with the server.
      * Note: the mailbox is not persisted - clients must call {@link #save} themselves.
      */
-    public static Mailbox newSystemMailbox(long accountId, int mailboxType, String name) {
-        if (mailboxType == Mailbox.TYPE_MAIL) {
-            throw new IllegalArgumentException("Cannot specify TYPE_MAIL for a system mailbox");
+    public static Mailbox newSystemMailbox(Context context, long accountId, int mailboxType) {
+        // Sync interval and flags are different based on mailbox type.
+        // TODO: Sync interval doesn't seem to be used anywhere, make it matter or get rid of it.
+        final int syncInterval;
+        final int flags;
+        switch (mailboxType) {
+            case TYPE_INBOX:
+                flags = Mailbox.FLAG_HOLDS_MAIL | Mailbox.FLAG_ACCEPTS_MOVED_MAIL;
+                syncInterval = 0;
+                break;
+            case TYPE_SENT:
+            case TYPE_TRASH:
+                flags = Mailbox.FLAG_HOLDS_MAIL;
+                syncInterval = 0;
+                break;
+            case TYPE_DRAFTS:
+            case TYPE_OUTBOX:
+                flags = Mailbox.FLAG_HOLDS_MAIL;
+                syncInterval = Account.CHECK_INTERVAL_NEVER;
+                break;
+            default:
+                throw new IllegalArgumentException("Bad mailbox type for newSystemMailbox: " +
+                        mailboxType);
         }
+
         Mailbox box = new Mailbox();
         box.mAccountKey = accountId;
         box.mType = mailboxType;
-        box.mSyncInterval = Account.CHECK_INTERVAL_NEVER;
+        box.mSyncInterval = syncInterval;
         box.mFlagVisible = true;
-        box.mServerId = box.mDisplayName = name;
+        // TODO: Fix how display names work.
+        box.mServerId = box.mDisplayName = getSystemMailboxName(context, mailboxType);
         box.mParentKey = Mailbox.NO_MAILBOX;
-        box.mFlags = Mailbox.FLAG_HOLDS_MAIL;
+        box.mFlags = flags;
         return box;
     }
 
@@ -284,10 +521,10 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
             if (c.moveToFirst()) {
                 mailbox = getContent(c, Mailbox.class);
                 if (c.moveToNext()) {
-                    Log.w(Logging.LOG_TAG, "Multiple mailboxes named \"" + path + "\"");
+                    LogUtils.w(Logging.LOG_TAG, "Multiple mailboxes named \"%s\"", path);
                 }
             } else {
-                Log.i(Logging.LOG_TAG, "Could not find mailbox at \"" + path + "\"");
+                LogUtils.i(Logging.LOG_TAG, "Could not find mailbox at \"%s\"", path);
             }
             return mailbox;
         } finally {
@@ -307,6 +544,33 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
         return mailbox;
     }
 
+    /**
+     * Check if a mailbox type can be synced with the server.
+     * @param mailboxType The type to check.
+     * @return Whether this type is syncable.
+     */
+    public static boolean isSyncableType(final int mailboxType) {
+        return SYNCABLE_TYPES.indexOfKey(mailboxType) >= 0;
+    }
+
+    /**
+     * Check if a mailbox type should sync with the server by default.
+     * @param mailboxType The type to check.
+     * @return Whether this type should default to syncing.
+     */
+    public static boolean getDefaultSyncStateForType(final int mailboxType) {
+        return SYNCABLE_TYPES.get(mailboxType);
+    }
+
+    /**
+     * Check whether this mailbox is syncable. It has to be both a server synced mailbox, and
+     * of a syncable able.
+     * @return Whether this mailbox is syncable.
+     */
+    public boolean isSyncable() {
+        return (mTotalCount >= 0) && isSyncableType(mType);
+    }
+
     @Override
     public void restore(Cursor cursor) {
         mBaseUri = CONTENT_URI;
@@ -324,15 +588,13 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
         mSyncTime = cursor.getLong(CONTENT_SYNC_TIME_COLUMN);
         mFlagVisible = cursor.getInt(CONTENT_FLAG_VISIBLE_COLUMN) == 1;
         mFlags = cursor.getInt(CONTENT_FLAGS_COLUMN);
-        mVisibleLimit = cursor.getInt(CONTENT_VISIBLE_LIMIT_COLUMN);
         mSyncStatus = cursor.getString(CONTENT_SYNC_STATUS_COLUMN);
         mLastTouchedTime = cursor.getLong(CONTENT_LAST_TOUCHED_TIME_COLUMN);
         mUiSyncStatus = cursor.getInt(CONTENT_UI_SYNC_STATUS_COLUMN);
         mUiLastSyncResult = cursor.getInt(CONTENT_UI_LAST_SYNC_RESULT_COLUMN);
-        mLastNotifiedMessageKey = cursor.getLong(CONTENT_LAST_NOTIFIED_MESSAGE_KEY_COLUMN);
-        mLastNotifiedMessageCount = cursor.getInt(CONTENT_LAST_NOTIFIED_MESSAGE_COUNT_COLUMN);
         mTotalCount = cursor.getInt(CONTENT_TOTAL_COUNT_COLUMN);
-        mLastSeenMessageKey = cursor.getLong(CONTENT_LAST_SEEN_MESSAGE_KEY_COLUMN);
+        mHierarchicalName = cursor.getString(CONTENT_HIERARCHICAL_NAME_COLUMN);
+        mLastFullSyncTime = cursor.getInt(CONTENT_LAST_FULL_SYNC_COLUMN);
     }
 
     @Override
@@ -351,16 +613,42 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
         values.put(MailboxColumns.SYNC_TIME, mSyncTime);
         values.put(MailboxColumns.FLAG_VISIBLE, mFlagVisible);
         values.put(MailboxColumns.FLAGS, mFlags);
-        values.put(MailboxColumns.VISIBLE_LIMIT, mVisibleLimit);
         values.put(MailboxColumns.SYNC_STATUS, mSyncStatus);
         values.put(MailboxColumns.LAST_TOUCHED_TIME, mLastTouchedTime);
         values.put(MailboxColumns.UI_SYNC_STATUS, mUiSyncStatus);
         values.put(MailboxColumns.UI_LAST_SYNC_RESULT, mUiLastSyncResult);
-        values.put(MailboxColumns.LAST_NOTIFIED_MESSAGE_KEY, mLastNotifiedMessageKey);
-        values.put(MailboxColumns.LAST_NOTIFIED_MESSAGE_COUNT, mLastNotifiedMessageCount);
         values.put(MailboxColumns.TOTAL_COUNT, mTotalCount);
-        values.put(MailboxColumns.LAST_SEEN_MESSAGE_KEY, mLastSeenMessageKey);
+        values.put(MailboxColumns.HIERARCHICAL_NAME, mHierarchicalName);
+        values.put(MailboxColumns.LAST_FULL_SYNC_TIME, mLastFullSyncTime);
         return values;
+    }
+
+    /**
+     * Store the updated message count in the database.
+     * @param c
+     * @param count
+     */
+    public void updateMessageCount(final Context c, final int count) {
+        if (count != mTotalCount) {
+            ContentValues values = new ContentValues();
+            values.put(MailboxColumns.TOTAL_COUNT, count);
+            update(c, values);
+            mTotalCount = count;
+        }
+    }
+
+    /**
+     * Store the last full sync time in the database.
+     * @param c
+     * @param syncTime
+     */
+    public void updateLastFullSyncTime(final Context c, final long syncTime) {
+        if (syncTime != mLastFullSyncTime) {
+            ContentValues values = new ContentValues();
+            values.put(MailboxColumns.LAST_FULL_SYNC_TIME, syncTime);
+            update(c, values);
+            mLastFullSyncTime = syncTime;
+        }
     }
 
     /**
@@ -374,24 +662,6 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
      * @return the id of the mailbox, or -1 if not found
      */
     public static long findMailboxOfType(Context context, long accountId, int type) {
-        // First use special URI
-        Uri uri = FROM_ACCOUNT_AND_TYPE_URI.buildUpon().appendPath(Long.toString(accountId))
-            .appendPath(Integer.toString(type)).build();
-        Cursor c = context.getContentResolver().query(uri, ID_PROJECTION, null, null, null);
-        if (c != null) {
-            try {
-                c.moveToFirst();
-                Long mailboxId = c.getLong(ID_PROJECTION_COLUMN);
-                if (mailboxId != null
-                        && mailboxId != 0L
-                        && mailboxId != NO_MAILBOX) {
-                    return mailboxId;
-                }
-            } finally {
-                c.close();
-            }
-        }
-        // Fallback to querying the database directly.
         String[] bindArguments = new String[] {Long.toString(type), Long.toString(accountId)};
         return Utility.getFirstRowLong(context, Mailbox.CONTENT_URI,
                 ID_PROJECTION, WHERE_TYPE_AND_ACCOUNT_KEY, bindArguments, null,
@@ -407,29 +677,6 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
             return Mailbox.restoreMailboxWithId(context, mailboxId);
         }
         return null;
-    }
-
-    public static int getUnreadCountByAccountAndMailboxType(Context context, long accountId,
-            int type) {
-        return Utility.getFirstRowInt(context, Mailbox.CONTENT_URI,
-                MAILBOX_SUM_OF_UNREAD_COUNT_PROJECTION,
-                ACCOUNT_AND_MAILBOX_TYPE_SELECTION,
-                new String[] { String.valueOf(accountId), String.valueOf(type) },
-                null, UNREAD_COUNT_COUNT_COLUMN, 0);
-    }
-
-    public static int getUnreadCountByMailboxType(Context context, int type) {
-        return Utility.getFirstRowInt(context, Mailbox.CONTENT_URI,
-                MAILBOX_SUM_OF_UNREAD_COUNT_PROJECTION,
-                MAILBOX_TYPE_SELECTION,
-                new String[] { String.valueOf(type) }, null, UNREAD_COUNT_COUNT_COLUMN, 0);
-    }
-
-    public static int getMessageCountByMailboxType(Context context, int type) {
-        return Utility.getFirstRowInt(context, Mailbox.CONTENT_URI,
-                MAILBOX_SUM_OF_MESSAGE_COUNT_PROJECTION,
-                MAILBOX_TYPE_SELECTION,
-                new String[] { String.valueOf(type) }, null, MESSAGE_COUNT_COUNT_COLUMN, 0);
     }
 
     /**
@@ -465,6 +712,21 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
                 null, null, null, MAILBOX_DISPLAY_NAME_COLUMN);
     }
 
+    public static int getMailboxMessageCount(Context c, long mailboxId) {
+        Cursor cursor = c.getContentResolver().query(
+                ContentUris.withAppendedId(MESSAGE_COUNT_URI, mailboxId), null, null, null, null);
+        if (cursor != null) {
+            try {
+                if (cursor.moveToFirst()) {
+                    return cursor.getInt(0);
+                }
+            } finally {
+                cursor.close();
+            }
+        }
+        return 0;
+    }
+
     /**
      * @param mailboxId ID of a mailbox.  This method accepts magic mailbox IDs, such as
      * {@link #QUERY_ALL_INBOXES}. (They're all non-refreshable.)
@@ -492,50 +754,9 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
             case TYPE_MAIL:
             case TYPE_TRASH:
             case TYPE_JUNK:
-            case TYPE_SENT:
                 return true;
         }
-        return false; // TYPE_DRAFTS, TYPE_OUTBOX, etc
-    }
-
-    /**
-     * @return whether or not this mailbox retrieves its data from the server (as opposed to just
-     *     a local mailbox that is never synced).
-     */
-    public boolean loadsFromServer(String protocol) {
-        if (HostAuth.SCHEME_EAS.equals(protocol)) {
-            return mType != Mailbox.TYPE_DRAFTS
-                    && mType != Mailbox.TYPE_OUTBOX
-                    && mType != Mailbox.TYPE_SEARCH
-                    && mType < Mailbox.TYPE_NOT_SYNCABLE;
-
-        } else if (HostAuth.SCHEME_IMAP.equals(protocol)) {
-            // TODO: actually use a sync flag when creating the mailboxes. Right now we use an
-            // approximation for IMAP.
-            return mType != Mailbox.TYPE_DRAFTS
-                    && mType != Mailbox.TYPE_OUTBOX
-                    && mType != Mailbox.TYPE_SEARCH;
-
-        } else if (HostAuth.SCHEME_POP3.equals(protocol)) {
-            return TYPE_INBOX == mType;
-        }
-
-        return false;
-    }
-
-    public boolean uploadsToServer(Context context) {
-        if (mType == TYPE_DRAFTS || mType == TYPE_OUTBOX || mType == TYPE_SEARCH) {
-            return false;
-        }
-        String protocol = Account.getProtocol(context, mAccountKey);
-        return (!protocol.equals(HostAuth.SCHEME_POP3));
-    }
-
-    /**
-     * @return true if messages in a mailbox of a type can be replied/forwarded.
-     */
-    public static boolean isMailboxTypeReplyAndForwardable(int type) {
-        return (type != TYPE_TRASH) && (type != TYPE_DRAFTS);
+        return false; // TYPE_DRAFTS, TYPE_OUTBOX, TYPE_SENT, etc
     }
 
     /**
@@ -571,8 +792,6 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
                 = mFlagVisible;
         hash[CONTENT_FLAGS_COLUMN]
                 = mFlags;
-        hash[CONTENT_VISIBLE_LIMIT_COLUMN]
-                = mVisibleLimit;
         hash[CONTENT_SYNC_STATUS_COLUMN]
                 = mSyncStatus;
         hash[CONTENT_PARENT_KEY_COLUMN]
@@ -583,12 +802,10 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
                 = mUiSyncStatus;
         hash[CONTENT_UI_LAST_SYNC_RESULT_COLUMN]
                 = mUiLastSyncResult;
-        hash[CONTENT_LAST_NOTIFIED_MESSAGE_KEY_COLUMN]
-                = mLastNotifiedMessageKey;
-        hash[CONTENT_LAST_NOTIFIED_MESSAGE_COUNT_COLUMN]
-                = mLastNotifiedMessageCount;
         hash[CONTENT_TOTAL_COUNT_COLUMN]
                 = mTotalCount;
+        hash[CONTENT_HIERARCHICAL_NAME_COLUMN]
+                = mHierarchicalName;
         return hash;
     }
 
@@ -616,15 +833,13 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
         dest.writeLong(mSyncTime);
         dest.writeInt(mFlagVisible ? 1 : 0);
         dest.writeInt(mFlags);
-        dest.writeInt(mVisibleLimit);
         dest.writeString(mSyncStatus);
         dest.writeLong(mLastTouchedTime);
         dest.writeInt(mUiSyncStatus);
         dest.writeInt(mUiLastSyncResult);
-        dest.writeLong(mLastNotifiedMessageKey);
-        dest.writeInt(mLastNotifiedMessageCount);
         dest.writeInt(mTotalCount);
-        dest.writeLong(mLastSeenMessageKey);
+        dest.writeString(mHierarchicalName);
+        dest.writeLong(mLastFullSyncTime);
     }
 
     public Mailbox(Parcel in) {
@@ -643,15 +858,13 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
         mSyncTime = in.readLong();
         mFlagVisible = in.readInt() == 1;
         mFlags = in.readInt();
-        mVisibleLimit = in.readInt();
         mSyncStatus = in.readString();
         mLastTouchedTime = in.readLong();
         mUiSyncStatus = in.readInt();
         mUiLastSyncResult = in.readInt();
-        mLastNotifiedMessageKey = in.readLong();
-        mLastNotifiedMessageCount = in.readInt();
         mTotalCount = in.readInt();
-        mLastSeenMessageKey = in.readLong();
+        mHierarchicalName = in.readString();
+        mLastFullSyncTime = in.readLong();
     }
 
     public static final Parcelable.Creator<Mailbox> CREATOR = new Parcelable.Creator<Mailbox>() {
@@ -669,5 +882,128 @@ public class Mailbox extends EmailContent implements SyncColumns, MailboxColumns
     @Override
     public String toString() {
         return "[Mailbox " + mId + ": " + mDisplayName + "]";
+    }
+
+    /**
+     * Get the mailboxes that should receive push updates for an account.
+     * @param cr The {@link ContentResolver}.
+     * @param accountId The id for the account that is pushing.
+     * @return A cursor (suitable for use with {@link #restore}) with all mailboxes we should sync.
+     */
+    public static Cursor getMailboxesForPush(final ContentResolver cr, final long accountId) {
+        return cr.query(Mailbox.CONTENT_URI, Mailbox.CONTENT_PROJECTION,
+                PUSH_MAILBOXES_FOR_ACCOUNT_SELECTION, new String[] { Long.toString(accountId) },
+                null);
+    }
+
+    /**
+     * Get the mailbox ids for an account that should sync when we do a full account sync.
+     * @param cr The {@link ContentResolver}.
+     * @param accountId The id for the account that is pushing.
+     * @return A cursor (with one column, containing ids) with all mailbox ids we should sync.
+     */
+    public static Cursor getMailboxIdsForSync(final ContentResolver cr, final long accountId) {
+        // We're sorting by mailbox type. The reason is that the inbox is type 0, other types
+        // (e.g. Calendar and Contacts) are all higher numbers. Upon initial sync, we'd like to
+        // sync the inbox first to improve perceived performance.
+        return cr.query(Mailbox.CONTENT_URI, Mailbox.ID_PROJECTION,
+                OUTBOX_PLUS_SYNCING_AND_ACCOUNT_SELECTION,
+                new String[] { Long.toString(accountId) }, MailboxColumns.TYPE + " ASC");
+    }
+
+    /**
+     * Get the mailbox ids for an account that are configured for sync and have a specific type.
+     * @param accountId The id for the account that is syncing.
+     * @param mailboxType The type of the mailbox we're interested in.
+     * @return A cursor (with one column, containing ids) with all mailbox ids that match.
+     */
+    public static Cursor getMailboxIdsForSyncByType(final ContentResolver cr, final long accountId,
+            final int mailboxType) {
+        return cr.query(Mailbox.CONTENT_URI, Mailbox.ID_PROJECTION,
+                SYNCING_AND_TYPE_FOR_ACCOUNT_SELECTION,
+                new String[] { Integer.toString(mailboxType), Long.toString(accountId) }, null);
+    }
+
+    /**
+     * Get the account id for a mailbox.
+     * @param context The {@link Context}.
+     * @param mailboxId The id of the mailbox we're interested in, as a {@link String}.
+     * @return The account id for the mailbox, or {@link Account#NO_ACCOUNT} if the mailbox doesn't
+     *         exist.
+     */
+    public static long getAccountIdForMailbox(final Context context, final String mailboxId) {
+        return Utility.getFirstRowLong(context,
+                Mailbox.CONTENT_URI.buildUpon().appendEncodedPath(mailboxId).build(),
+                ACCOUNT_KEY_PROJECTION, null, null, null,
+                ACCOUNT_KEY_PROJECTION_ACCOUNT_KEY_COLUMN, Account.NO_ACCOUNT);
+    }
+
+    /**
+     * Gets the correct authority for a mailbox.
+     * @param mailboxType The type of the mailbox we're interested in.
+     * @return The authority for the mailbox we're interested in.
+     */
+    public static String getAuthority(final int mailboxType) {
+        switch (mailboxType) {
+            case Mailbox.TYPE_CALENDAR:
+                return CalendarContract.AUTHORITY;
+            case Mailbox.TYPE_CONTACTS:
+                return ContactsContract.AUTHORITY;
+            default:
+                return EmailContent.AUTHORITY;
+        }
+    }
+
+    public static void resyncMailbox(
+            final ContentResolver cr,
+            final android.accounts.Account account,
+            final long mailboxId) {
+        final Cursor cursor = cr.query(Mailbox.CONTENT_URI,
+                new String[]{
+                        Mailbox.TYPE,
+                        Mailbox.SERVER_ID,
+                },
+                Mailbox.RECORD_ID + "=?",
+                new String[] {String.valueOf(mailboxId)},
+                null);
+        if (cursor == null || cursor.getCount() == 0) {
+            LogUtils.w(Logging.LOG_TAG, "Mailbox %d not found", mailboxId);
+            return;
+        }
+        try {
+            cursor.moveToFirst();
+            final int type = cursor.getInt(0);
+            if (type >= TYPE_NOT_EMAIL) {
+                throw new IllegalArgumentException(
+                        String.format("Mailbox %d is not an Email mailbox", mailboxId));
+            }
+            final String serverId = cursor.getString(1);
+            if (TextUtils.isEmpty(serverId)) {
+                throw new IllegalArgumentException(
+                        String.format("Mailbox %d has no server id", mailboxId));
+            }
+            final ArrayList<ContentProviderOperation> ops =
+                    new ArrayList<ContentProviderOperation>();
+            ops.add(ContentProviderOperation.newDelete(Message.CONTENT_URI)
+                    .withSelection(Message.MAILBOX_SELECTION,
+                            new String[]{String.valueOf(mailboxId)})
+                    .build());
+            ops.add(ContentProviderOperation.newUpdate(
+                    ContentUris.withAppendedId(Mailbox.CONTENT_URI, mailboxId))
+                    .withValue(Mailbox.SYNC_KEY, "0").build());
+
+            cr.applyBatch(AUTHORITY, ops);
+            final Bundle extras = createSyncBundle(mailboxId);
+            extras.putBoolean(ContentResolver.SYNC_EXTRAS_IGNORE_SETTINGS, true);
+            ContentResolver.requestSync(account, AUTHORITY, extras);
+            LogUtils.i(Logging.LOG_TAG, "requestSync resyncMailbox %s, %s",
+                    account.toString(), extras.toString());
+        } catch (RemoteException e) {
+            LogUtils.w(Logging.LOG_TAG, e, "Failed to wipe mailbox %d", mailboxId);
+        } catch (OperationApplicationException e) {
+            LogUtils.w(Logging.LOG_TAG, e, "Failed to wipe mailbox %d", mailboxId);
+        } finally {
+            cursor.close();
+        }
     }
 }

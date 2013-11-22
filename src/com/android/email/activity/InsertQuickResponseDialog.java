@@ -17,32 +17,31 @@
 package com.android.email.activity;
 
 import com.android.email.R;
-import com.android.email.activity.setup.
-        AccountSettingsEditQuickResponsesFragment.QuickResponseFinder;
-import com.android.emailcommon.provider.Account;
-import com.android.emailcommon.utility.EmailAsyncTask;
+import com.android.mail.providers.Account;
+import com.android.mail.providers.UIProvider;
 
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DialogFragment;
 import android.app.Fragment;
+import android.app.LoaderManager;
 import android.content.Context;
+import android.content.CursorLoader;
 import android.content.DialogInterface;
+import android.content.Loader;
+import android.database.Cursor;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ListView;
+import android.widget.SimpleCursorAdapter;
 
 /**
  * Dialog which lists QuickResponses for the specified account. On user selection, will call
  * Callback.onQuickResponseSelected() with the selected QuickResponse text.
  */
-public class InsertQuickResponseDialog extends DialogFragment
-        implements DialogInterface.OnClickListener, OnItemClickListener {
-    private ListView mQuickResponsesView;
-    private EmailAsyncTask.Tracker mTaskTracker;
-
+public class InsertQuickResponseDialog extends DialogFragment {
     // Key for the Account object in the arguments bundle
     private static final String ACCOUNT_KEY = "account";
 
@@ -56,6 +55,9 @@ public class InsertQuickResponseDialog extends DialogFragment
         public void onQuickResponseSelected(CharSequence quickResponse);
     }
 
+    // Public no-args constructor needed for fragment re-instantiation
+    public InsertQuickResponseDialog() {}
+
     /**
      * Create and returns new dialog.
      *
@@ -67,11 +69,8 @@ public class InsertQuickResponseDialog extends DialogFragment
         final InsertQuickResponseDialog dialog = new InsertQuickResponseDialog();
 
         // If a target is set, it MUST implement Callback. Fail-fast if not.
-        final Callback callback;
         if (callbackFragment != null) {
-            try {
-                callback = (Callback) callbackFragment;
-            } catch (ClassCastException e) {
+            if (!(callbackFragment instanceof Callback)) {
                 throw new ClassCastException(callbackFragment.toString()
                         + " must implement Callback");
             }
@@ -89,56 +88,64 @@ public class InsertQuickResponseDialog extends DialogFragment
         // If target not set, the parent activity MUST implement Callback. Fail-fast if not.
         final Fragment targetFragment = getTargetFragment();
         if (targetFragment != null) {
-            final Callback callback;
-            try {
-                callback = (Callback) getActivity();
-            } catch (ClassCastException e) {
+            if (!(getActivity() instanceof Callback)) {
                 throw new ClassCastException(getActivity().toString() + " must implement Callback");
             }
         }
 
         // Now that Callback implementation is verified, build the dialog
         final Context context = getActivity();
+
+        final SimpleCursorAdapter adapter = new SimpleCursorAdapter(getActivity(),
+                R.layout.quick_response_item, null,
+                new String[] {UIProvider.QuickResponseColumns.TEXT},
+                new int[] {R.id.quick_response_text}, 0);
+
+        final ListView listView = new ListView(context);
+        listView.setAdapter(adapter);
+
+        listView.setOnItemClickListener(new OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                final Cursor c = (Cursor) listView.getItemAtPosition(position);
+                final String quickResponseText =
+                        c.getString(c.getColumnIndex(UIProvider.QuickResponseColumns.TEXT));
+                getCallback().onQuickResponseSelected(quickResponseText);
+                dismiss();
+            }
+        });
+
+        final Account account = getArguments().getParcelable(ACCOUNT_KEY);
+
+        getLoaderManager().initLoader(0, null, new LoaderManager.LoaderCallbacks<Cursor>() {
+            @Override
+            public Loader<Cursor> onCreateLoader(int id, Bundle args) {
+                return new CursorLoader(getActivity(), account.quickResponseUri,
+                        UIProvider.QUICK_RESPONSE_PROJECTION, null, null, null);
+            }
+
+            @Override
+            public void onLoadFinished(Loader<Cursor> loader, Cursor data) {
+                adapter.swapCursor(data);
+            }
+
+            @Override
+            public void onLoaderReset(Loader<Cursor> loader) {
+                adapter.swapCursor(null);
+            }
+        });
+
         final AlertDialog.Builder b = new AlertDialog.Builder(context);
-
-        mQuickResponsesView = new ListView(context);
-
-        Account account = (Account) getArguments().getParcelable(ACCOUNT_KEY);
-        mTaskTracker = new EmailAsyncTask.Tracker();
-        new QuickResponseFinder(mTaskTracker, account.mId, mQuickResponsesView,
-                context, null, this, false).executeParallel();
-
         b.setTitle(getResources()
                 .getString(R.string.message_compose_insert_quick_response_list_title))
-                .setView(mQuickResponsesView)
-                .setNegativeButton(R.string.cancel_action, this);
+                .setView(listView)
+                .setNegativeButton(R.string.cancel_action, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.cancel();
+                    }
+                });
         return b.create();
-    }
-
-    @Override
-    public void onDestroy() {
-        mTaskTracker.cancellAllInterrupt();
-        super.onDestroy();
-    }
-
-    /**
-     * Implements OnItemClickListener.
-     */
-    @Override
-    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-        getCallback().onQuickResponseSelected(
-                mQuickResponsesView.getItemAtPosition(position).toString());
-        dismiss();
-    }
-
-    /**
-     * Implements DialogInterface.OnClickListener
-     */
-    @Override
-    public void onClick(DialogInterface dialog, int which) {
-        if (which == DialogInterface.BUTTON_NEGATIVE) {
-            dialog.cancel();
-        }
     }
 
     private Callback getCallback() {

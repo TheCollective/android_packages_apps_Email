@@ -18,13 +18,12 @@
 package com.android.emailcommon.utility;
 
 import android.content.Context;
-import android.net.SSLCertificateSocketFactory;
-import android.util.Log;
 
 import com.android.emailcommon.Logging;
 import com.android.emailcommon.provider.HostAuth;
 import com.android.emailcommon.utility.SSLUtils.KeyChainKeyManager;
 import com.android.emailcommon.utility.SSLUtils.TrackingKeyManager;
+import com.android.mail.utils.LogUtils;
 
 import org.apache.http.conn.scheme.PlainSocketFactory;
 import org.apache.http.conn.scheme.Scheme;
@@ -42,9 +41,10 @@ import javax.net.ssl.KeyManager;
  */
 public class EmailClientConnectionManager extends ThreadSafeClientConnManager {
 
-    private static final boolean LOG_ENABLED = false;
     private static final int STANDARD_PORT = 80;
     private static final int STANDARD_SSL_PORT = 443;
+    private static final boolean LOG_ENABLED = false;
+
     /**
      * A {@link KeyManager} to track client certificate requests from servers.
      */
@@ -59,9 +59,11 @@ public class EmailClientConnectionManager extends ThreadSafeClientConnManager {
         mTrackingKeyManager = keyManager;
     }
 
-    public static EmailClientConnectionManager newInstance(HttpParams params, boolean ssl,
-            int port) {
+    public static EmailClientConnectionManager newInstance(Context context, HttpParams params,
+            HostAuth hostAuth) {
         TrackingKeyManager keyManager = new TrackingKeyManager();
+        boolean ssl = hostAuth.shouldUseSsl();
+        int port = hostAuth.mPort;
 
         // Create a registry for our three schemes; http and https will use built-in factories
         SchemeRegistry registry = new SchemeRegistry();
@@ -69,10 +71,11 @@ public class EmailClientConnectionManager extends ThreadSafeClientConnManager {
                 ssl ? STANDARD_PORT : port));
         // Register https with the secure factory
         registry.register(new Scheme("https",
-                SSLUtils.getHttpSocketFactory(false, keyManager), ssl ? port : STANDARD_SSL_PORT));
+                SSLUtils.getHttpSocketFactory(context, hostAuth, keyManager, false),
+                ssl ? port : STANDARD_SSL_PORT));
         // Register the httpts scheme with our insecure factory
         registry.register(new Scheme("httpts",
-                SSLUtils.getHttpSocketFactory(true /*insecure*/, keyManager),
+                SSLUtils.getHttpSocketFactory(context, hostAuth, keyManager, true),
                 ssl ? port : STANDARD_SSL_PORT));
 
         return new EmailClientConnectionManager(params, registry, keyManager);
@@ -93,16 +96,15 @@ public class EmailClientConnectionManager extends ThreadSafeClientConnManager {
         Scheme existing = registry.get(schemeName);
         if (existing == null) {
             if (LOG_ENABLED) {
-                Log.i(Logging.LOG_TAG, "Registering socket factory for certificate alias ["
+                LogUtils.i(Logging.LOG_TAG, "Registering socket factory for certificate alias ["
                         + hostAuth.mClientCertAlias + "]");
             }
             KeyManager keyManager =
                     KeyChainKeyManager.fromAlias(context, hostAuth.mClientCertAlias);
-            SSLCertificateSocketFactory underlying = SSLUtils.getSSLSocketFactory(
-                    hostAuth.shouldTrustAllServerCerts(), 0 /* no timeout */);
-            underlying.setKeyManagers(new KeyManager[] { keyManager });
-            registry.register(
-                    new Scheme(schemeName, new SSLSocketFactory(underlying), hostAuth.mPort));
+            boolean insecure = hostAuth.shouldTrustAllServerCerts();
+            SSLSocketFactory ssf =
+                    SSLUtils.getHttpSocketFactory(context, hostAuth, keyManager, insecure);
+            registry.register(new Scheme(schemeName, ssf, hostAuth.mPort));
         }
     }
 

@@ -27,7 +27,9 @@ import android.net.NetworkInfo.State;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
-import android.util.Log;
+
+import com.android.email2.ui.MailActivityEmail;
+import com.android.mail.utils.LogUtils;
 
 /**
  * Encapsulates functionality of ConnectivityManager for use in the Email application.  In
@@ -41,7 +43,7 @@ import android.util.Log;
  * TODO: Use this class in ExchangeService
  */
 public class EmailConnectivityManager extends BroadcastReceiver {
-    private static final String TAG = "EmailConnectivityManager";
+    private static final String TAG = "EmailConnectivityMgr";
 
     // Loop time while waiting (stopgap in case we don't get a broadcast)
     private static final int CONNECTIVITY_WAIT_TIME = 10*60*1000;
@@ -179,15 +181,15 @@ public class EmailConnectivityManager extends BroadcastReceiver {
                 if (info != null) {
                     // We're done if there's an active network
                     if (waiting) {
-                        if (Email.DEBUG) {
-                            Log.d(TAG, mName + ": Connectivity wait ended");
+                        if (MailActivityEmail.DEBUG) {
+                            LogUtils.d(TAG, mName + ": Connectivity wait ended");
                         }
                     }
                     return;
                 } else {
                     if (!waiting) {
-                        if (Email.DEBUG) {
-                            Log.d(TAG, mName + ": Connectivity waiting...");
+                        if (MailActivityEmail.DEBUG) {
+                            LogUtils.d(TAG, mName + ": Connectivity waiting...");
                         }
                         waiting = true;
                     }
