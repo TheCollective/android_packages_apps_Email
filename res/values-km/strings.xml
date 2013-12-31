@@ -21,46 +21,18 @@
     <string name="permission_access_provider_label" msgid="378256653525377586">"ចូល​ដំណើរ​ការ​ទិន្នន័យ​​កម្មវិធី​ផ្ដល់​​អ៊ីមែល"</string>
     <string name="permission_access_provider_desc" msgid="6296566558584670348">"អនុញ្ញាត​​ឲ្យ​​កម្មវិធី​ដើម្បី​ចូល​ដំណើរការ​មូលដ្ឋាន​ទិន្នន័យ​អ៊ីមែល​របស់​អ្នក,​ រួម​ទាំង​សារ​ដែល​បាន​ទទួល, ​សារ​ដែល​បាន​ផ្ញើ, ​ឈ្មោះ​អ្នក​ប្រើ ​និង​ពាក្យ​សម្ងាត់​។"</string>
     <string name="app_name" msgid="5815426892327290362">"អ៊ីមែល"</string>
-    <string name="compose_title" msgid="427986915662706899">"តែង"</string>
     <string name="debug_title" msgid="5175710493691536719">"កែ​កំហុស"</string>
     <string name="next_action" msgid="3931301986364184415">"បន្ទាប់"</string>
     <string name="okay_action" msgid="8365197396795675617">"យល់​ព្រម"</string>
     <string name="cancel_action" msgid="6967435583794021865">"បោះ​បង់"</string>
     <string name="previous_action" msgid="5181616311579820981">"មុន"</string>
-    <string name="send_action" msgid="1729766205562446418">"ផ្ញើ"</string>
-    <string name="reply_action" msgid="4262472229221507619">"ឆ្លើយតប"</string>
-    <string name="reply_all_action" msgid="6192179825726332152">"ឆ្លើយតប​ទាំងអស់"</string>
-    <string name="delete_action" msgid="8421026208288857155">"លុប"</string>
-    <string name="forward_action" msgid="669174181042344116">"បញ្ជូន​បន្ត"</string>
-    <string name="favorite_action" msgid="4664259801498253756">"ផ្កាយ"</string>
     <string name="done_action" msgid="7497990549515580249">"ធ្វើ​រួច"</string>
     <string name="create_action" msgid="3062715563215392251">"បង្កើត​ថ្មី"</string>
-    <string name="delete_quick_response_action" msgid="3076922270182841978">"លុប"</string>
     <string name="quick_responses_empty_view" msgid="3960050972306132367">"គ្មាន​ការ​ឆ្លើយតប​រហ័ស​។"</string>
-    <string name="discard_action" msgid="6532206074859505968">"បោះបង់"</string>
-    <string name="save_draft_action" msgid="6413714270991417223">"រក្សាទុក​សេចក្ដី​ព្រាង"</string>
-    <string name="show_quick_text_list_dialog_action" msgid="4136018559611145202">"បញ្ចូល​​ការ​ឆ្លើយតប​​​រហ័ស"</string>
-    <string name="read_action" msgid="4701484794504781686">"សម្គាល់​ថា​អាន​រួច"</string>
-    <string name="unread_action" msgid="6280399049357552826">"សម្គាល់​ថា​មិន​ទាន់​អាន"</string>
-    <string name="set_star_action" msgid="4660317166196258160">"បន្ថែម​ផ្កាយ"</string>
-    <string name="remove_star_action" msgid="6689770999647007163">"ដក​ផ្កាយ​ចេញ"</string>
-    <string name="refresh_action" msgid="5951383001436708175">"ផ្ទុក​ឡើងវិញ"</string>
-    <string name="compose_action" msgid="4045702519637388045">"តែង"</string>
-    <string name="search_action" msgid="6325101454876682308">"ស្វែងរក"</string>
     <string name="account_settings_action" msgid="4494079183315085171">"ការ​កំណត់​គណនី"</string>
-    <string name="settings_action" msgid="6334807007967459412">"ការ​កំណត់"</string>
     <string name="menu_folder_options" msgid="2871906096248843471">"ជម្រើស​សម​កាល​កម្ម"</string>
-    <string name="mark_as_unread_action" msgid="3766298115778767554">"សម្គាល់​ថា​មិន​ទាន់​អាន"</string>
-    <string name="move_action" msgid="3059189775933985898">"ផ្លាស់ទី"</string>
-    <string name="add_cc_bcc_menu" msgid="4757145078498200242">"បន្ថែម ចម្លង​ជូន/​ចម្លង​ជា​សម្ងាត់​ជូន"</string>
     <string name="add_file_attachment" msgid="2203398371671979481">"ភ្ជាប់​​ឯកសារ"</string>
-    <string name="close_action" msgid="533058985745238100">"បិទ"</string>
-    <string name="message_list_send_pending_messages_action" msgid="8502942186631824114">"ផ្ញើ​សារ​ទាំងអស់"</string>
-    <string name="choose_attachment_dialog_title" msgid="81937507117528954">"ជ្រើស​ឯកសារ​ភ្ជាប់"</string>
-    <string name="move_to_folder_dialog_title" msgid="2614318192482193898">"ផ្លាស់ទី​ទៅ"</string>
-    <string name="status_loading_messages" msgid="6552307237621292344">"កំពុង​ផ្ទុក​សារ…"</string>
     <string name="status_network_error" msgid="2611654064403817391">"បញ្ហា​​ក្នុង​ការ​តភ្ជាប់​។"</string>
-    <string name="error_loading_message_body" msgid="6775234299515596760">"មិន​អាច​ផ្ទុក​អត្ថបទ​សារ​។ សារ​​​អាច​​ធំ​ពេក​សម្រាប់​​​មើល​។"</string>
   <plurals name="move_messages">
     <item quantity="one" msgid="320885379869442589">"ផ្លាស់ទី​សារ"</item>
     <item quantity="other" msgid="371256717624461324">"ផ្លាស់ទី​សារ"</item>
@@ -77,9 +49,6 @@
     <item quantity="few" msgid="1991747245324120305">"នៅ​ក្នុង​គណនី <xliff:g id="NUMBER_ACCOUNTS">%d</xliff:g>"</item>
     <item quantity="other" msgid="2723797835410343458">"នៅ​ក្នុង​គណនី <xliff:g id="NUMBER_ACCOUNTS">%d</xliff:g>"</item>
   </plurals>
-    <string name="notification_to_account" msgid="2078557719010667913">"ជូន​ចំពោះ <xliff:g id="RECEIVER_NAME">%1$s</xliff:g>"</string>
-    <string name="notification_multiple_new_messages_fmt" msgid="2606649762841566104">"<xliff:g id="ID_1">%1$d</xliff:g> សារ​ថ្មី"</string>
-    <string name="account_name_display_all" msgid="837218861494831989">"គណនី​ទាំងអស់"</string>
   <plurals name="number_of_accounts">
     <item quantity="one" msgid="6343953132237244947">"គណនី <xliff:g id="NUM_ACCOUNTS">%1$d</xliff:g>"</item>
     <item quantity="other" msgid="8548760449976444566">"គណនី <xliff:g id="NUM_ACCOUNTS">%1$d</xliff:g>"</item>
@@ -92,106 +61,35 @@
     <string name="mailbox_name_display_junk" msgid="9046762505977999288">"ឥត​បាន​ការ"</string>
     <string name="mailbox_name_display_starred" msgid="7788694947644186069">"បាន​ដាក់​ផ្កាយ"</string>
     <string name="mailbox_name_display_unread" msgid="1015674989793998695">"មិន​ទាន់​អាន"</string>
-    <string name="picker_mailbox_name_all_unread" msgid="6392491216581687644">"ប្រអប់​ទទួល (មិន​ទាន់​​​អាន​)"</string>
-    <string name="picker_mailbox_name_all_inbox" msgid="2277030979530376085">"ប្រអប់​ទទួល (ទាំងអស់​)"</string>
-    <string name="picker_combined_view_fmt" msgid="6276294768978512737">"ទិដ្ឋភាព​រួម​បញ្ចូល​គ្នា ( <xliff:g id="COUNT">%s</xliff:g> )"</string>
   <plurals name="picker_combined_view_account_count">
     <item quantity="one" msgid="380235084337895804">"គណនី <xliff:g id="ACCOUNT_COUNT">%d</xliff:g>"</item>
     <item quantity="other" msgid="4145163147488719025">"គណនី <xliff:g id="ACCOUNT_COUNT">%d</xliff:g>"</item>
   </plurals>
-    <string name="debug_version_fmt" msgid="6160213145745376955">"កំណែ៖ <xliff:g id="VERSION">%s</xliff:g>"</string>
     <string name="account_folder_list_summary_inbox" msgid="7518263761297423255">"ប្រអប់​ទទួល"</string>
     <string name="account_folder_list_summary_starred" msgid="3134312269246375723">"បាន​ដាក់​ផ្កាយ"</string>
     <string name="account_folder_list_summary_drafts" msgid="5514845993247300437">"សេចក្ដី​ព្រាង"</string>
     <string name="account_folder_list_summary_outbox" msgid="3059836696049399377">"ប្រអប់​ចេញ"</string>
     <string name="mailbox_list_account_selector_combined_view" msgid="1556327299894225044">"ទិដ្ឋភាព​រួម​បញ្ចូល​គ្នា"</string>
-    <string name="mailbox_list_account_selector_show_all_folders" msgid="4185052839366909439">"បង្ហាញ​ថត​ទាំងអស់"</string>
-    <string name="mailbox_list_account_selector_account_header" msgid="4261295503836387876">"គណនី"</string>
-    <string name="mailbox_list_account_selector_mailbox_header_fmt" msgid="3320144348694625092">"ថត​ថ្មីៗ (<xliff:g id="EMAIL_ADDRESS">%s</xliff:g>)"</string>
-    <string name="mailbox_list_user_mailboxes" msgid="484260487104726379">"ថត​ទាំងអស់"</string>
-    <string name="mailbox_list_recent_mailboxes" msgid="8922653040520361032">"ថត​ថ្មីៗ"</string>
-    <string name="message_subject_description" msgid="3597047441062021199">"ប្រធានបទ"</string>
-    <string name="message_is_empty_description" msgid="4004644319382041459">"គ្មាន​ប្រធានបទ"</string>
-    <string name="message_list_load_more_messages_action" msgid="7428302707908825692">"ផ្ទុក​សារ​បន្ថែម​ទៀត"</string>
   <plurals name="message_view_selected_message_count">
     <item quantity="one" msgid="5064657358375178519">"បាន​ជ្រើស <xliff:g id="MESSAGE_COUNT">%d</xliff:g>"</item>
     <item quantity="other" msgid="7901361399231876038">"បាន​ជ្រើស <xliff:g id="MESSAGE_COUNT">%d</xliff:g>"</item>
   </plurals>
-    <string name="message_list_no_messages" msgid="7846910091922523867">"គ្មាន​សារ។"</string>
-    <string name="message_compose_to_hint" msgid="2891895306418177013">"ជូន​ចំពោះ"</string>
-    <string name="message_compose_cc_hint" msgid="8481884461031434144">"ចម្លង​ជូន"</string>
-    <string name="message_compose_bcc_hint" msgid="9177337492358841680">"ចម្លង​ជា​សម្ងាត់​ជូន"</string>
-    <string name="message_compose_subject_hint" msgid="6993487234024160782">"ប្រធានបទ"</string>
-    <string name="message_compose_from_label" msgid="4084843296548498041">"ពី៖"</string>
     <string name="to" msgid="4392614766835725698">"ជូន​ចំពោះ"</string>
     <string name="cc" msgid="7017720927911078193">"ចម្លង​ជូន"</string>
     <string name="bcc" msgid="3098643138241111579">"ចម្លង​ជា​សម្ងាត់​ជូន"</string>
     <string name="subject_hint" msgid="7253964583324677128">"ប្រធានបទ"</string>
     <string name="body_hint" msgid="4279864165439577668">"តែង​អ៊ីមែល"</string>
     <string name="message_compose_fwd_header_fmt" msgid="5181300290654579434">\n\n"-------- សារ​ដើម --------\n ប្រធានបទ៖ <xliff:g id="SUBJECT">%1$s</xliff:g>\n ពី៖ <xliff:g id="SENDER">%2$s</xliff:g>\n ជូន​ចំពោះ៖ <xliff:g id="TO">%3$s</xliff:g>\n ចម្លង​ជូន៖ <xliff:g id="CC_0">%4$s</xliff:g>\n\n"</string>
-    <string name="message_compose_reply_header_fmt" msgid="8815624773273454573">\n\n"<xliff:g id="SENDER">%s</xliff:g> បាន​សរសេរ៖ \n\n"</string>
-    <string name="message_compose_quoted_text_label" msgid="6950097435198536165">"បញ្ចូល​​​អត្ថបទ​ដកស្រង់"</string>
-    <string name="message_compose_include_quoted_text_checkbox_label" msgid="8165567368956050390">"រួម​បញ្ចូល​អត្ថបទ"</string>
-    <string name="message_compose_error_no_recipients" msgid="140299472517968199">"បញ្ចូល​​​អ្នក​ទទួល​យ៉ាង​ហោច​ណាស់​មួយ។"</string>
-    <string name="message_compose_error_invalid_email" msgid="1817633338629885643">"អាសយដ្ឋាន​អ៊ីមែល​មួយ​ចំនួន​​​មិន​ត្រឹមត្រូវ។"</string>
-    <string name="message_compose_attachment_size" msgid="4401081828287333647">"ឯកសារ​ធំ​ពេក​ ដើម្បី​ភ្ជាប់​។"</string>
     <string name="message_compose_insert_quick_response_list_title" msgid="5314107302508728189">"បញ្ចូល​ចម្លើយ​តប​​រហ័ស"</string>
     <!-- no translation found for message_compose_insert_quick_response_menu_title (5817075097532919955) -->
     <skip />
-    <string name="message_compose_display_name" msgid="6415258924917140704">"<xliff:g id="NAME">%1$s</xliff:g> និង <xliff:g id="NUMBER">%2$d</xliff:g> ផ្សេងទៀត"</string>
-    <string name="message_view_to_label" msgid="6485191743265527381">"ជូន​ចំពោះ៖"</string>
-    <string name="message_view_cc_label" msgid="6322992216371163122">"ចម្លង​ជូន៖"</string>
-    <string name="message_view_bcc_label" msgid="7577479221285310198">"ចម្លង​ជា​សម្ងាត់​ជូន៖"</string>
-    <string name="message_view_date_label" msgid="7033814961837313339">"កាលបរិច្ឆេទ៖"</string>
-    <string name="message_view_from_label" msgid="6055076379282772675">"ពី៖"</string>
-    <string name="message_view_subject_label" msgid="3731022187530000852">"ប្រធានបទ៖"</string>
-    <string name="message_view_attachment_view_action" msgid="4408093860407096078">"មើល"</string>
-    <string name="message_view_attachment_install_action" msgid="381211378884166381">"ដំឡើង"</string>
-    <string name="message_view_attachment_play_action" msgid="5214215414665114061">"ចាក់"</string>
-    <string name="message_view_attachment_load_action" msgid="8645178445048233745">"ផ្ទុក"</string>
-    <string name="message_view_attachment_info_action" msgid="3908148393469626740">"ព័ត៌មាន"</string>
-    <string name="message_view_attachment_save_action" msgid="4704436274670997903">"រក្សាទុក"</string>
-    <string name="message_view_attachment_saved" msgid="3432810414785232025">"បាន​រក្សាទុក"</string>
-    <string name="message_view_attachment_cancel_action" msgid="316700885943712101">"បញ្ឈប់"</string>
-    <string name="message_view_status_attachment_saved" msgid="8878790392556284868">"ឯកសារ​ភ្ជាប់​ដែល​បាន​រក្សា​ទុក​ដូច​ជា <xliff:g id="FILENAME">%s</xliff:g> ។"</string>
-    <string name="message_view_status_attachment_not_saved" msgid="4013475734255421939">"មិន​អាច​រក្សា​ទុក​ឯកសារ​ភ្ជាប់​។"</string>
     <string name="message_view_attachment_background_load" msgid="7906875687519445185">"ឯកសារ​ភ្ជាប់​​មួយ ​ឬ​ច្រើន​នៅ​ក្នុង​សារ​​ដែល​បាន​​បញ្ជូន​បន្ត​របស់​អ្នក​នឹង​​ត្រូវ​បាន​ទាញ​យក​មុន​ពេល​ផ្ញើ​។"</string>
-    <string name="message_view_show_message_action" msgid="5134222901019191436">"សារ"</string>
-    <string name="message_view_show_invite_action" msgid="8862797393776226777">"អញ្ជើញ"</string>
   <plurals name="message_view_show_attachments_action">
     <item quantity="one" msgid="7594476368958824007">"ឯកសារ​ភ្ជាប់ <xliff:g id="NUM_ATTACHMENT">%1$d</xliff:g>"</item>
     <item quantity="other" msgid="974463163535515223">"ឯកសារ​ភ្ជាប់ <xliff:g id="NUM_ATTACHMENT">%1$d</xliff:g>"</item>
   </plurals>
-    <string name="message_view_show_pictures_action" msgid="5059936981743072545">"បង្ហាញ​រូបភាព"</string>
-    <string name="message_view_always_show_pictures_button" msgid="6523810929103546865">"បង្ហាញ​ជា​និច្ច"</string>
-    <string name="message_view_always_show_pictures_prompt" msgid="7685500276479967959">"​បង្ហាញ​រូបភាព​ជានិច្ច​​ពី​អ្នក​ផ្ញើ​នេះ"</string>
-    <string name="message_view_always_show_pictures_confirmation" msgid="6838463134312859448">"នឹង​បង្ហាញ​រូបភាព​ពី​អ្នក​ផ្ញើ​នេះ​​​ស្វ័យ​ប្រវត្តិ​។"</string>
-    <string name="message_view_invite_view" msgid="5521032519960111675">"មើល​ក្នុង​ប្រតិទិន"</string>
-    <string name="message_view_invite_title" msgid="3418949733434713805">"ប្រតិទិន​អញ្ជើញ"</string>
-    <string name="message_view_invite_text" msgid="1212799906603873708">"ចូលរួម?"</string>
-    <string name="message_view_invite_accept" msgid="744546668021679819">" បាទ/ចាស"</string>
-    <string name="message_view_invite_maybe" msgid="7555189462441562318">" ប្រហែល"</string>
-    <string name="message_view_invite_decline" msgid="6119797303297149463">" ទេ"</string>
-    <string name="message_view_invite_toast_yes" msgid="6802274503171644414">"អ្នក​បាន​ទទួល​យក​ការ​អញ្ជើញ​នេះ​។"</string>
-    <string name="message_view_invite_toast_maybe" msgid="8547454326090527202">"អ្នក​បាន​ឆ្លើយ \"ប្រហែល\" ចំពោះ​កា​រ​អញ្ជើញ​នេះ។"</string>
-    <string name="message_view_invite_toast_no" msgid="1842341256942784143">"អ្នក​បាន​បដិសេធ​ការ​អញ្ជើញ​នេះ​។"</string>
-    <string name="message_view_show_details" msgid="6287415596441037095">"បង្ហាញ​សេចក្ដី​លម្អិត"</string>
-    <string name="message_view_message_details_dialog_title" msgid="9042008615386883449">"សេចក្ដី​លម្អិត​អំពី​សារ"</string>
-    <string name="attachment_info_dialog_default_title" msgid="4995755709689009622">"ព័ត៌មាន​ឯកសារ​ភ្ជាប់"</string>
-    <string name="attachment_info_dialog_wifi_title" msgid="3174350153882915382">"​ទាមទារ​​ឲ្យ​ភ្ជាប់​វ៉ាយហ្វាយ"</string>
-    <string name="attachment_info_wifi_settings" msgid="96432970927503597">"ការ​កំណត់​វ៉ាយហ្វាយ"</string>
-    <string name="attachment_info_application_settings" msgid="4124655487276125596">"ការ​កំណត់​កម្មវិធី"</string>
-    <string name="attachment_info_unknown" msgid="8342655396805943320">"មិន​អាច​បើក​ឯកសារ​ភ្ជាប់​។"</string>
-    <string name="attachment_info_malware" msgid="6576029010855055528">"អ្នក​មិន​អាច​រក្សា​ទុក ​ឬ​បើក​ឯកសារ​នេះ​បាន​ទេ​ព្រោះ​ប្រភេទ​នៃ​ឯកសារ​ភ្ជាប់​នេះ​ប្រហែល​ជា​មាន​កម្មវិធី​​ដែល​បង្ក​ឲ្យ​មាន​បញ្ហា។"</string>
-    <string name="attachment_info_policy" msgid="3560422300127587508">"មិន​អាច​រក្សាទុក​ ឬ​បើក​ឯកសារ​ភ្ជាប់​នេះ​ ​​ដោយ​សារ​តែ​គោល​ន​យោ​បាយ​​សុវត្ថិភាព​គណនី​។"</string>
-    <string name="attachment_info_wifi_only" msgid="1481120960014563617">"​ឯកសារ​ភ្ជាប់​​នេះ​ធំ​ពេក​ដើម្បី​ទាញ​យក​នៅ​លើ​ប​បណ្ដាញ​ឧបករណ៍​​ចល័ត​។ អ្នក​អាច​ទាញ​យក​វា​​បន្ទាប់​ពី​អ្នក​ភ្ជាប់​បណ្ដាញ​វ៉ាយហ្វាយ។"</string>
-    <string name="attachment_info_no_intent" msgid="8139209405745777924">"មិន​មាន​កម្មវិធី​ដែល​បាន​ដំឡើង​ដែល​អាច​បើក​ឯកសារ​ភ្ជាប់​នេះ​។ ​ព្យាយាម​​​ទាញ​យក​កម្មវិធី​​ពី​​ត្រឹមត្រូវ​ទី​ផ្សារ Android ។"</string>
-    <string name="attachment_info_sideload_disabled" msgid="3270731101769840006">"ឯកសារ​ភ្ជាប់​នេះ​គឺ​ជា​កម្មវិធី​មួយ​។ អ្នក​ត្រូវ​តែ​ពិនិត្យ​មើល​ប្រភព​ដែល​មិន​ស្គាល់​នៅ​ក្នុង​ការ​កំណត់​​&gt; កម្មវិធី មុននឹង​​អ្នក​ដំឡើង​វា។"</string>
-    <string name="attachment_info_apk_install_disabled" msgid="2817790592227462682">"មិន​អាច​ដំឡើង​កម្ម​វិធី​ដោយ​ផ្ទាល់​ពី​អ៊ីមែល​។ ជា​ដំបូង​រក្សា​ទុក​កម្មវិធី​នេះ​ ហើយ​បន្ទាប់​មក​ដំឡើង​វា​ដោយ​ប្រើ​កម្មវិធី​ទាញ​យក។"</string>
     <string name="attachment_not_found" msgid="7155322700141145123">"មិន​អាច​ទាញ​យក​ឯកសារ​ភ្ជាប់​​។"</string>
     <string name="message_decode_error" msgid="5016042255170947834">"មាន​កំហុស​ខណៈ​ពេល​ឌិកូដ​សារ។"</string>
-    <string name="eml_view_title" msgid="8827210108543430336">"មើល <xliff:g id="FILENAME">%s</xliff:g>"</string>
-    <string name="message_delete_dialog_title" msgid="6603370107217227252"></string>
   <plurals name="message_delete_confirm">
     <item quantity="one" msgid="3799616435056423256">"លុប​សារ​នេះ?"</item>
     <item quantity="other" msgid="4437637377522896262">"លុប​សារ​ទាំងនេះ?"</item>
@@ -200,11 +98,6 @@
     <item quantity="one" msgid="710742672464447084">"បាន​លុប​សារ។"</item>
     <item quantity="other" msgid="6574961322865652255">"បាន​លុបសារ។"</item>
   </plurals>
-    <string name="message_discarded_toast" msgid="3891461729325584026">"បាន​បោះបង់​សារ។"</string>
-    <string name="message_saved_toast" msgid="8443125659172627665">"បាន​រក្សា​ទុក​សារ​​ជា​សេចក្ដី​ព្រាង។"</string>
-    <string name="message_view_display_attachment_toast" msgid="7714482237896346836">"មិន​អាច​បង្ហាញ​ឯកសារ​ភ្ជាប់​។"</string>
-    <string name="message_view_load_attachment_failed_toast" msgid="8605967295095023587">"មិន​អាច​ផ្ទុក​ឯកសារ​ភ្ជាប់ \" <xliff:g id="FILENAME">%s</xliff:g>\" ។"</string>
-    <string name="message_view_parse_message_toast" msgid="8830378966553031281">"ការ​បើក​សារ ..."</string>
   <plurals name="message_moved_toast">
     <item quantity="one" msgid="3098493230185412871">"<xliff:g id="NUM_MESSAGE">%1$d</xliff:g> បាន​​​ផ្លាស់ទី​សារ​ទៅ <xliff:g id="MAILBOX_NAME">%2$s</xliff:g>"</item>
     <item quantity="other" msgid="2286739630865943494">"<xliff:g id="NUM_MESSAGE">%1$d</xliff:g> បាន​ផ្លាស់ទី​សារ​​ទៅ <xliff:g id="MAILBOX_NAME">%2$s</xliff:g>"</item>
@@ -229,15 +122,11 @@
     <item quantity="one" msgid="6261986598249539093">"<xliff:g id="SIZE_IN_GIGABYTES">%d</xliff:g> ជីកាបៃ"</item>
     <item quantity="other" msgid="1041353825053598633">"<xliff:g id="SIZE_IN_GIGABYTES">%d</xliff:g> ជីកាបៃ"</item>
   </plurals>
-    <string name="message_view_move_to_newer" msgid="2190862552581773765">"ថ្មី​ជាង"</string>
-    <string name="message_view_move_to_older" msgid="4993043091356700890">"ចាស់​ជាង"</string>
-    <string name="message_list_subject_snippet_divider" msgid="1783589062530679520">" — "</string>
     <string name="account_setup_basics_title" msgid="3578333196594678422">"រៀបចំ​គណនី"</string>
     <string name="account_setup_basics_headline" msgid="6726590205905464015">"គណនី​អ៊ីមែល"</string>
     <string name="accounts_welcome" msgid="8337750045270269649">"អ្នក​អាច​កំណត់​រចនា​សម្ព័ន្ធ​​​​អ៊ីមែល​សម្រាប់​គណនី​​ច្រើន​​​​​តែ​ពីរ ឬ​បី​ជំហាន​ប៉ុណ្ណោះ។"</string>
     <string name="account_setup_basics_email_label" msgid="3454164053624112047">"អាសយដ្ឋាន​អ៊ីមែល"</string>
     <string name="account_setup_basics_password_label" msgid="9133549799291519298">"ពាក្យសម្ងាត់"</string>
-    <string name="account_setup_basics_default_label" msgid="8896222991837026736">"ផ្ញើ​អ៊ីមែល​ពី​គណនី​នេះ​​តាម​​លំនាំ​ដើម"</string>
     <string name="account_setup_basics_manual_setup_action" msgid="8053852205391155912">"រៀបចំ​ដោយ​ដៃ"</string>
     <string name="account_setup_username_password_toast" msgid="3968270274727947460">"​បញ្ចូល​​ពាក្យ​សម្ងាត់ ​និង​​អាសយដ្ឋាន​អ៊ីមែល​​ដែល​ត្រឹមត្រូវ​។"</string>
     <string name="account_duplicate_dlg_title" msgid="8089732986912704425">"ស្ទួន​គណនី"</string>
@@ -280,12 +169,6 @@
     <string name="account_setup_outgoing_require_login_label" msgid="7779484127897397562">"ទាមទារ​ឲ្យ​​ចូល"</string>
     <string name="account_setup_outgoing_username_label" msgid="3309680794731596981">"ឈ្មោះ​អ្នក​ប្រើ"</string>
     <string name="account_setup_outgoing_password_label" msgid="227844585493317550">"ពាក្យសម្ងាត់"</string>
-    <string name="account_setup_exchange_title" msgid="396004732514751781">"រៀបចំ​គណនី"</string>
-    <string name="account_setup_exchange_headline" msgid="6099049671599242131">"ការ​កំណត់​ម៉ាស៊ីន​មេ"</string>
-    <string name="account_setup_exchange_server_label" msgid="795137797983360826">"ម៉ាស៊ីន​មេ"</string>
-    <string name="account_setup_exchange_username_label" msgid="6517176180828983060">"ដែន\\ឈ្មោះ​អ្នក​ប្រើ"</string>
-    <string name="account_setup_exchange_ssl_label" msgid="6704105469083211236">"ប្រើ​ការ​តភ្ជាប់​សុវត្ថិភាព (SSL​)"</string>
-    <string name="account_setup_exchange_trust_certificates_label" msgid="6232880757633882678">"ទទួល​យក​វិញ្ញាបនបត្រ SSL ទាំងអស់"</string>
     <string name="account_setup_exchange_certificate_title" msgid="8473793588405277962">"វិញ្ញាបនបត្រ​ម៉ាស៊ីន​ភ្ញៀវ"</string>
     <string name="account_setup_exchange_select_certificate" msgid="1536103662037268683">"ជ្រើស"</string>
     <string name="account_setup_exchange_use_certificate" msgid="8690682770083161349">"ប្រើ​វិញ្ញាបនបត្រ​ម៉ាស៊ីន​ភ្ញៀវ"</string>
@@ -408,31 +291,19 @@
     <string name="account_settings_vibrate_when_label" msgid="708477308761702671">"ញ័រ"</string>
     <string name="account_settings_ringtone" msgid="8229878374785575207">"ជ្រើស​សំឡេង​រោទ៍"</string>
     <string name="account_settings_servers" msgid="4925493817981624242">"ការ​កំណត់​ម៉ាស៊ីន​​មេ"</string>
-    <string name="account_delete_dlg_title" msgid="6806087520856396608">"លុប​គណនី"</string>
-    <string name="account_delete_dlg_instructions_fmt" msgid="8236846322040271280">"នឹង​លុប​គណនី \"<xliff:g id="ACCOUNT">%s</xliff:g>\" ចេញ​ពី​អ៊ីមែល។"</string>
-    <string name="account_settings_category_delete_account" msgid="5128545184407925226">"លុប​គណនី"</string>
-    <string name="account_settings_delete_account_label" msgid="4889158717472601718">"លុប​គណនី"</string>
     <string name="mailbox_settings_activity_title" msgid="4705845931573373274">"ជម្រើស​សម​កាល​កម្ម"</string>
     <string name="mailbox_settings_activity_title_with_mailbox" msgid="6485481250424219240">"ជម្រើស​សម​កាល​កម្ម ( <xliff:g id="MAILBOXX_NAME">%s</xliff:g> )"</string>
-    <string name="mailbox_preferences_header" msgid="9077316556563252246">"កំណត់​ការ​ធ្វើ​សម​កាល​កម្ម"</string>
     <!-- no translation found for mailbox_settings_sync_enabled_label (1180866791599296994) -->
     <skip />
     <!-- no translation found for mailbox_settings_sync_enabled_summary (345878979425044320) -->
     <skip />
     <!-- no translation found for mailbox_settings_mailbox_sync_window_label (851180833264474141) -->
     <skip />
-    <string name="preference_conversation_list_icon_title" msgid="2691641598368725077">"រូបភាព​អ្នក​ផ្ញើ"</string>
   <string-array name="prefEntries_conversationListIconName">
     <item msgid="228585958140385749">"បង្ហាញ​រូបភាព"</item>
     <item msgid="2226691218102223696">"គ្មាន​អ្វី​បង្ហាញ"</item>
   </string-array>
-    <string name="preference_conversation_list_icon_summary" msgid="4654821690566370979">"ជ្រើស​ថា​តើ​ត្រូវ​បង្ហាញ​រូបភាព​របស់​អ្នក​ផ្ញើ​នៅ​ក្នុង​ទិដ្ឋភាព​ការ​សន្ទនា"</string>
     <string name="prefDialogTitle_conversationListIcon" msgid="4601797400885989153">"រូបភាព​អ្នក​ផ្ញើ"</string>
-    <string name="account_shortcut_picker_name" msgid="1994861845225243190">"គណនី​អ៊ីមែល"</string>
-    <string name="account_shortcut_picker_title" msgid="1039929224016048015">"ជ្រើស​គណនី"</string>
-    <string name="mailbox_shortcut_picker_title" msgid="4152973927804882131">"ជ្រើស​ថត"</string>
-    <string name="toast_account_not_found" msgid="8144242451730692816">"រក​មិន​ឃើញ​គណនី​។ វា​អាច​ត្រូវ​បាន​យក​ចេញ​។"</string>
-    <string name="toast_mailbox_not_found" msgid="4960014581292378895">"រក​មិន​ឃើញ​ថត​។ វា​អាច​ត្រូវ​បាន​លុប​​​ចេញ​។"</string>
     <string name="provider_note_live" msgid="2995297671709325333">"មាន​​​គណនី \"Plus\" តែ​មួយ​ចំនួន រួម​បញ្ចូល​នូវ​ការ​ចូល​ដំណើរ​ការ POP អនុញ្ញាត​​ឲ្យ​​កម្មវិធី​នេះ​ត្រូវ​​តភ្ជាប់​។ ​បើ​អ្នក​មិន​អាច​ចុះ​ហត្ថលេខា​​ដោយ​ប្រើ​​អាសយដ្ឋាន​អ៊ីមែល​ត្រឹមត្រូវ​និង​ពាក្យ​សម្ងាត់​របស់​អ្នក,​ អ្នក​ប្រហែល​ជា​មិន​​ចាំបាច់​បង់​ប្រាក់​​គណនី \"Plus\" ។ បើក​ដំណើរការ​កម្មវិធី​អ៊ីនធឺណិត​បណ្ដាញ​ដើម្បី​ទទួល​បាន​នូវ​ការ​ចូល​ដំណើរ​ការ​ទៅ​កាន់​គណនី​អ៊ីមែល​ទាំងនេះ​។"</string>
     <string name="provider_note_t_online" msgid="1630642061431427894">"មុន​ពេល​រៀបចំ​គណនី​អ៊ីមែល​​នេះ សូម​​មើល​តំបន់​បណ្ដាញ T-Online ហើយ​​បង្កើត​ពាក្យ​សម្ងាត់​សម្រាប់​ចូល​ដំណើរ​ការ​អ៊ីមែល POP3 ។"</string>
     <string name="exchange_name" msgid="1190783774800310346">"សហការ"</string>
@@ -440,14 +311,12 @@
     <string name="system_account_create_failed" msgid="3673792980526246177">"មិន​អាច​បង្កើត​គណនី​។ សូម​ព្យាយាម​ម្ដងទៀត។"</string>
     <string name="device_admin_label" msgid="8680224994637869414">"អ៊ីមែល"</string>
     <string name="device_admin_description" msgid="426727923791430306">"បើក​​គោល​ន​យោ​បាយ​សុវត្ថិភាព​ម៉ាស៊ីន​មេ​​ដែល​បាន​បញ្ជាក់"</string>
-    <string name="gal_searching_fmt" msgid="6140450617663543464">"កំពុង​ស្វែងរក <xliff:g id="DOMAIN">%s</xliff:g>…"</string>
   <plurals name="gal_completed_fmt">
     <item quantity="one" msgid="7496785524617037642">"<xliff:g id="RESULTS">%1$d</xliff:g> លទ្ធផល​ពី <xliff:g id="DOMAIN">%2$s</xliff:g>"</item>
     <item quantity="other" msgid="7816121892960632123">"<xliff:g id="RESULTS">%1$d</xliff:g> លទ្ធផល​​ពី <xliff:g id="DOMAIN">%2$s</xliff:g>"</item>
   </plurals>
     <string name="settings_activity_title" msgid="5185915603716333904">"ការ​កំណត់"</string>
     <string name="header_label_general_preferences" msgid="8243724566056800991">"ការ​កំណត់​ទូទៅ"</string>
-    <string name="category_general_preferences" msgid="2742423840964045801">"កម្មវិធី"</string>
     <string name="general_preference_confirm_delete_label" msgid="1863245465244241907">"បញ្ជាក់​មុន​ពេល​លុប"</string>
     <string name="general_preference_confirm_delete_summary" msgid="6710240861010766643">"សារ"</string>
     <string name="general_preference_confirm_send_label" msgid="4548277349553989930">"បញ្ជាក់​មុន​ពេល​ផ្ញើ"</string>
@@ -466,24 +335,8 @@
     <string name="general_preference_text_zoom_normal" msgid="1765540147950855479">"ធម្មតា"</string>
     <string name="general_preference_text_zoom_large" msgid="6874323663381586918">"ធំ"</string>
     <string name="general_preference_text_zoom_huge" msgid="4270503132355963031">"ធំ​សម្បើម"</string>
-    <string name="general_preferences_clear_trusted_senders_summary" msgid="2648501128162793879">"នឹង​មិន​បង្ហាញ​រូបភាព​នៅ​ក្នុង​សារ​​​ស្វ័យ​ប្រវត្តិ"</string>
-    <string name="position_of_count" msgid="7989353140376877792">"<xliff:g id="ID_1">%1$d</xliff:g> នៃ <xliff:g id="ID_2">%2$s</xliff:g>"</string>
-    <string name="waitinf_for_sync_message_1" msgid="1393719303955128036">"រង់ចាំ​ធ្វើ​សម​កាល​កម្ម"</string>
-    <string name="waitinf_for_sync_message_2" msgid="5656175205790694016">"អ៊ីមែល​របស់​អ្នក​នឹង​​លេចឡើង​បន្តិច​ទៀត។"</string>
-    <string name="widget_other_views" msgid="4988574907386539499">"ប៉ះ​រូប​តំណាង​ ដើម្បី​​ប្ដូរ។"</string>
-    <string name="widget_all_mail" msgid="4352573990283094963">"បាន​បញ្ចូល​ប្រអប់​ទទួល​ចូល​គ្នា"</string>
-    <string name="widget_unread" msgid="4404711399009077833">"មិន​ទាន់​អាន"</string>
-    <string name="widget_starred" msgid="8290352707134011791">"បាន​ដាក់​ផ្កាយ"</string>
-    <string name="widget_loading" msgid="2340962056927255554">"កំពុង​ផ្ទុក..."</string>
-    <string name="widget_touch_to_configure" msgid="7062039013915225323">"ប៉ះ​ ដើម្បី​រៀបចំ។"</string>
-    <string name="widget_no_accounts" msgid="2412482205591224408">"អ្នក​មិន​បាន​រៀបចំ​គណនី​អ៊ីមែល​​នៅ​ឡើយ​ទេ​។"</string>
     <string name="more_than_999" msgid="8704425397397918798">"999+"</string>
     <string name="search_hint" msgid="2200412192574686497">"ស្វែងរក​អ៊ីមែល"</string>
-    <string name="search_mailbox_hint" msgid="7854987729678942790">"ស្វែងរក <xliff:g id="ID_1">%1$s</xliff:g>"</string>
-    <string name="search_header_text_fmt" msgid="3857004638127418247">"លទ្ធផល​នៃ​ការ​ស្វែងរក​សម្រាប់ \"<xliff:g id="ID_1">%1$s</xliff:g>\""</string>
-    <string name="search_slow_warning_title" msgid="2826118321880530239">"រង់ចាំ​លទ្ធផល"</string>
-    <string name="search_slow_warning_message" msgid="8494483410797387903">"ម៉ាស៊ីន​​​មេ​មួយ​ចំនួន​​អាច​នឹង​ចំណាយ​ពេល​យូរ​។"</string>
-    <string name="action_bar_mailbox_list_title" msgid="7484457755531286333">"ថត"</string>
     <string name="policy_dont_allow_camera" msgid="5744573062306937302">"មិន​អនុញ្ញាត​ប្រើ​ម៉ាស៊ីន​ថត​របស់​ឧបករណ៍"</string>
     <string name="policy_require_password" msgid="7177274900480984702">"ទាមទារ​ការ​ពាក្យ​សម្ងាត់​ឧបករណ៍"</string>
     <string name="policy_password_history" msgid="5743544498302303181">"ដាក់កម្រិត​​ប្រើ​​ពាក្យ​សម្ងាត់​ថ្មី​ឡើងវិញ"</string>
@@ -503,6 +356,5 @@
     <string name="folder_picker_title" msgid="860241987640527156">"កម្មវិធី​ជ្រើស​ថត"</string>
     <string name="trash_folder_selection_title" msgid="8052880079616386185">"ជ្រើស​ថត​ធុង​សំរាម​ម៉ាស៊ីន​​មេ​​សម្រាប់ <xliff:g id="ACCOUNT">%s</xliff:g>"</string>
     <string name="sent_folder_selection_title" msgid="2668629667423320684">"ជ្រើស​​ថត​ធាតុ​បាន​ផ្ញើ​ដោយ​ម៉ាស៊ីន​​មេ​សម្រាប់ <xliff:g id="ACCOUNT">%s</xliff:g>"</string>
-    <string name="create_new_folder" msgid="2726544180243210741">"បង្កើត​ថត"</string>
     <string name="account_waiting_for_folders_msg" msgid="6504836014579036923">"កំពុង​ផ្ទុក​បញ្ជី​ថត ..."</string>
 </resources>

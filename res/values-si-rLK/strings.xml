@@ -245,12 +245,10 @@
     <string name="mailbox_settings_sync_enabled_label" msgid="1180866791599296994">"මෙම් ෆෝල්ඩරය සමමුහුර්ත කරන්න"</string>
     <string name="mailbox_settings_sync_enabled_summary" msgid="345878979425044320">"සම්බන්ධ වූ විටදී පණිවිඩ බාගත වෙයි"</string>
     <string name="mailbox_settings_mailbox_sync_window_label" msgid="851180833264474141">"සමමුහුර්ත කළ යුතු තැපැල් සඳහා දින"</string>
-    <string name="preference_conversation_list_icon_title" msgid="2691641598368725077">"යවන්නාගේ රුපය"</string>
   <string-array name="prefEntries_conversationListIconName">
     <item msgid="228585958140385749">"රුපය පෙන්වන්න"</item>
     <item msgid="2226691218102223696">"කිසිවක් නොපෙන්වන්න"</item>
   </string-array>
-    <string name="preference_conversation_list_icon_summary" msgid="4654821690566370979">"සංවාද දර්ශනය තුළ යවන්නාගේ රූපය පෙන්වීමට අවශ්‍යද නැද්ද යනවග තෝරන්න"</string>
     <string name="prefDialogTitle_conversationListIcon" msgid="4601797400885989153">"යවන්නාගේ රුපය"</string>
     <string name="provider_note_live" msgid="2995297671709325333">"POP පිවිසුම ඇතුළත් සමහරක් \"Plus\" ගිණුම් පමණක් මෙම වැඩසටහනට සම්බන්ද වීමට අවසර දෙයි.ඔබගේ නිවැරදි ඊ-තැපැල් ලිපිනය සහ මුරපදය සමග ඔබට පුරණය වීමට ඔබට නොහැකිනම්, ඔබට ගෙවූ \"Plus\" ගිණුමක් නොතිබෙනවා විය හැක. මෙම ඊ-තැපැල් ගිණුම්වලට පිවිසුම ලැබීමට වෙබ් බ්‍රව්සරය අරඹන්න."</string>
     <string name="provider_note_t_online" msgid="1630642061431427894">"මෙම ඊ-තැපැල් ගිණුම සැකසීමට පෙර, T-Online වෙබ් අඩවිය වෙත ගොස් POP3 ඊ-තැපැල් පිව්සුම සඳහා මුරපදයක් සාදන්න."</string>

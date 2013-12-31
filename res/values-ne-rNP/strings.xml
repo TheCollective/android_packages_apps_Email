@@ -245,12 +245,10 @@
     <string name="mailbox_settings_sync_enabled_label" msgid="1180866791599296994">"यस फोल्डरलाई सिङ्क गर्नुहोस्"</string>
     <string name="mailbox_settings_sync_enabled_summary" msgid="345878979425044320">"जडान हुँदा सन्देशहरू डाउनलोड हुने छन्"</string>
     <string name="mailbox_settings_mailbox_sync_window_label" msgid="851180833264474141">"सिङ्क गर्नु पर्ने मेलका दिन"</string>
-    <string name="preference_conversation_list_icon_title" msgid="2691641598368725077">"प्रेषक तस्वीर"</string>
   <string-array name="prefEntries_conversationListIconName">
     <item msgid="228585958140385749">"तस्वीर देखाउनुहोस्"</item>
     <item msgid="2226691218102223696">"केहि पनि नदेखाउनुहोस्"</item>
   </string-array>
-    <string name="preference_conversation_list_icon_summary" msgid="4654821690566370979">"वार्तालाप दृश्य मा प्रेषक चित्रहरुलाई देखाउनको लागि केही छान्नुहोस्"</string>
     <string name="prefDialogTitle_conversationListIcon" msgid="4601797400885989153">"प्रेषक तस्वीर"</string>
     <string name="provider_note_live" msgid="2995297671709325333">"केवल केहि \"प्लस\" खाताहरूले मात्र यस प्रोग्रामलाई जडान गर्न POP पहुँच समावेश गर्दछ। यदि तपाईं आफ्नो सहि ईमेल ठेगाना र पासवर्डबाट साइन इन गर्न असक्षम हुनुभयो भने, तपाईंले \"प्लस\" खातामा भुक्तान नगरेको हुनुपर्दछ। यी ईमेल खाताहरूमा पहुँच पाउनको लागि वेब ब्राउजर सुरूवात गर्नुहोस्।"</string>
     <string name="provider_note_t_online" msgid="1630642061431427894">"यो ईमेल खाता सेट अप गर्नु अघि, टि-अनलाइन वेबसाइटको भ्रमण गर्नुहोस् र POP3 ईमेल पहुँचको लागि एउटा पासवर्डको सिर्जना गर्नुहोस्।"</string>
